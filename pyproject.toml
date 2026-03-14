@@ -7,5 +7,6 @@ requires-python = ">=3.9"
 dependencies = [
     "duckdb>=1.4.4",
     "huggingface-hub>=1.7.1",
+    "pandas>=2.3.3",
     "python-dotenv>=1.2.1",
 ]
