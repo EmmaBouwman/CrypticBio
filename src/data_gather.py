@@ -1,16 +1,40 @@
-from huggingface_hub import snapshot_download
+from __future__ import annotations
+from datetime import datetime, timedelta
+import time
 import os
+
+from huggingface_hub import snapshot_download
 from dotenv import load_dotenv
 from pathlib import Path
+from PIL import Image
 import duckdb
+import numpy as np
+
+from sentinelhub import (
+    CRS,
+    BBox,
+    DataCollection,
+    MimeType,
+    SentinelHubRequest,
+    SHConfig,
+    bbox_to_dimensions,
+)
+from sentinelhub.exceptions import DownloadFailedException
+from geopy.distance import distance
 
 load_dotenv()
 
 base_folder = Path(os.getenv('DATA_FOLDER'))
 cb_image_path = base_folder / os.getenv('CB_IMAGE_PATH', '').strip('/')
-sentinel_image_path = base_folder / os.getenv('SENTINEL_IMAGE_PATH', '').strip('/')
-parquets = base_folder / "parquets"
+sh_image_path = base_folder / os.getenv('SENTINEL_IMAGE_PATH', '').strip('/')
+parquets_before_download = base_folder / "parquets"
+parquets = base_folder / os.getenv('PARQUETS_PATH', '').strip('/')
 db_path = base_folder / os.getenv('DATABASE')
+
+def check_exists_dir(path: Path):
+    if not path.exists():
+        print("Created the directory {path}")
+        path.mkdir(parents=True, exist_ok=True)
 
 def download_parquests(parquet_path):
     snapshot_download(
@@ -36,3 +60,81 @@ def create_database(db_path, parquet_path):
             SELECT * FROM read_parquet('{parquet_path}/CrypticBio/*.parquet')
         """)
         print(f"Finished creating the database at {db_path}")
+
+def save_image(path, image):
+    print(path)
+    img = Image.fromarray(image.astype(np.uint8))
+    img.save(path)
+
+def get_bounding_box(lat, lon, size_meters=10):
+    d = distance(meters=size_meters / 2)
+    
+    max_lat = d.destination((lat, lon), bearing=0).latitude
+    min_lat = d.destination((lat, lon), bearing=180).latitude
+    max_lon = d.destination((lat, lon), bearing=90).longitude
+    min_lon = d.destination((lat, lon), bearing=270).longitude
+    
+    return [min_lon, min_lat, max_lon, max_lat]
+
+def get_date_range(date_str, days_buffer=15):
+    center_date = datetime.strptime(date_str, "%Y-%m-%d")
+    delta = timedelta(days=days_buffer)
+
+    start_date = center_date - delta
+    end_date = center_date + delta
+  
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+
+def get_image(lat, lon, date, config, save_path, width = 2500, resolution=10, attempts=3):
+    bbox = BBox(bbox=get_bounding_box(lat, lon, width), crs=CRS.WGS84)
+    bbox_size = bbox_to_dimensions(bbox, resolution=resolution)  
+    start_date, end_date = get_date_range(date)  
+
+    evalscript_true_color = """
+        function setup() {
+            return {
+                input: [{
+                    bands: ["B02", "B03", "B04"]
+                }],
+                output: {
+                    bands: 3
+                }
+            };
+        }
+
+        function evaluatePixel(sample) {
+            return [sample.B04, sample.B03, sample.B02];
+        }
+    """
+
+    request_true_color = SentinelHubRequest(
+        evalscript=evalscript_true_color,
+        input_data=[
+            SentinelHubRequest.input_data(
+                data_collection=DataCollection.SENTINEL2_L2A,
+                time_interval=(start_date, end_date),
+            )
+        ],
+        responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
+        bbox=bbox,
+        size=bbox_size,
+        config=config,
+    )
+
+    for _ in range(attempts):
+        try:
+            true_color_imgs = request_true_color.get_data()
+            continue
+        except DownloadFailedException as e:
+            if e.response.status_code == 429:
+                print("Rate limit exceeded -> waiting...")
+                time.sleep(2^1 * 10)
+            else:
+                raise e
+    if true_color_imgs:
+        print(true_color_imgs[0])
+        # factor 1/255 to scale between 0-1
+        # factor 3.5 to increase brightness 
+        save_image(save_path, true_color_imgs[0])
+    else:
+        raise Exception("Failed to gather image data from API. Probably due to rate limit")
