@@ -6,6 +6,16 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "duckdb>=1.4.4",
+    "geopy>=2.4.1",
     "huggingface-hub>=1.7.1",
+    "numpy>=2.0.2",
     "python-dotenv>=1.2.1",
+    "sentinelhub>=3.11.5",
 ]
+
+[build-system]
+requires = ["setuptools>=82.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
