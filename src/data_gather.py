@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
 import numpy as np
-from dotenv import load_dotenv
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -37,7 +35,7 @@ class DuckDBManager:
         if self.con:
             self.con.close()
             self.con = None
-    
+
     def create_db(self, parquet_path: Path):
         try:
             self.con.execute(f"""
@@ -57,17 +55,111 @@ class DuckDBManager:
         try:
             self.con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
         except duckdb.TransactionException:
-            raise RuntimeError(f"Could not drop {self.table_name}, " \
-                               "because it is currently being used by another process.")
+            raise RuntimeError(
+                f"Could not drop {self.table_name}, "
+                "because it is currently being used by another process."
+            )
         except Exception as e:
             raise RuntimeError(
                 f"An unexpected error occurred while dropping {self.table_name}"
             ) from e
 
 
+class SentinelHubManager:
+    def __init__(self, config, width=2500, resolution=10, attempts=3):
+        self.config = config
+        self.width = width
+        self.resolution = resolution
+        self.attempts = attempts
+        self.evalscript = """
+            function setup() {
+                return {
+                    input: [{ bands: ["B02", "B03", "B04"] }],
+                    output: { bands: 3 }
+                };
+            }
+            function evaluatePixel(sample) {
+                return [sample.B04, sample.B03, sample.B02];
+            }
+        """
+
+    def _get_bounding_box(self, lat, lon):
+        d = distance(meters=self.width / 2)
+
+        max_lat = d.destination((lat, lon), bearing=0).latitude
+        min_lat = d.destination((lat, lon), bearing=180).latitude
+        max_lon = d.destination((lat, lon), bearing=90).longitude
+        min_lon = d.destination((lat, lon), bearing=270).longitude
+
+        return [min_lon, min_lat, max_lon, max_lat]
+
+    def _get_date_range(self, date_str, days_buffer=15):
+        center_date = datetime.strptime(date_str, "%Y-%m-%d")
+        delta = timedelta(days=days_buffer)
+
+        start = (center_date - delta).strftime("%Y-%m-%d")
+        end = (center_date + delta).strftime("%Y-%m-%d")
+
+        return start, end
+
+    def get_and_save_image(self, lat, lon, date, save_path):
+        bbox_coords = self._get_bounding_box(lat, lon)
+        bbox = BBox(bbox=bbox_coords, crs=CRS.WGS84)
+        bbox_size = bbox_to_dimensions(bbox, resolution=self.resolution)
+        start_date, end_date = self._get_date_range(date)
+
+        request = SentinelHubRequest(
+            evalscript=self.evalscript,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A,
+                    time_interval=(start_date, end_date),
+                )
+            ],
+            responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
+            bbox=bbox,
+            size=bbox_size,
+            config=self.config,
+        )
+
+        images = self._request_with_retry(request)
+
+        if images:
+            self._save_to_location(save_path, images[0])
+        else:
+            raise RuntimeError(f"No image found for {lat}, {lon}")
+
+    def _request_with_retry(self, request):
+        for i in range(self.attempts):
+            try:
+                return request.get_data()
+            except DownloadFailedException as e:
+                response = getattr(e.request_exception, "response", None)
+                status_code = getattr(response, "status_code", None)
+
+                if status_code == 429:
+                    print(f"Rate limit hit. Retrying in {(2**i) * 10}s...")
+                    time.sleep((2**i) * 10)
+                    continue
+                raise e
+        return None
+
+    def _save_to_location(self, path, image_array):
+        try:
+            img = Image.fromarray(image_array.astype(np.uint8))
+            img.save(path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Directory does not exist for path: {path}. ")
+        except PermissionError:
+            raise PermissionError(f"Permission denied: Cannot write to {path}. ")
+        except Exception as e:
+            raise RuntimeError(
+                "An unexpected error occurred while saving the image."
+            ) from e
+
+
 def check_exists_dir(path: Path):
     if not path.exists():
-        print("Created the directory {path}")
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -81,88 +173,3 @@ def download_parquests(parquet_path):
         local_dir_use_symlinks=False,
         resume_download=True,  # Allows you to restart if your internet cuts out
     )
-    print(f"Finished downloading parquet files and are stored at {parquet_path}")
-
-
-def save_image(path, image):
-    print(path)
-    img = Image.fromarray(image.astype(np.uint8))
-    img.save(path)
-
-
-def get_bounding_box(lat, lon, size_meters=10):
-    d = distance(meters=size_meters / 2)
-
-    max_lat = d.destination((lat, lon), bearing=0).latitude
-    min_lat = d.destination((lat, lon), bearing=180).latitude
-    max_lon = d.destination((lat, lon), bearing=90).longitude
-    min_lon = d.destination((lat, lon), bearing=270).longitude
-
-    return [min_lon, min_lat, max_lon, max_lat]
-
-
-def get_date_range(date_str, days_buffer=15):
-    center_date = datetime.strptime(date_str, "%Y-%m-%d")
-    delta = timedelta(days=days_buffer)
-
-    start_date = center_date - delta
-    end_date = center_date + delta
-
-    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
-
-
-def get_image(lat, lon, date, config, save_path, width=2500, resolution=10, attempts=3):
-    bbox = BBox(bbox=get_bounding_box(lat, lon, width), crs=CRS.WGS84)
-    bbox_size = bbox_to_dimensions(bbox, resolution=resolution)
-    start_date, end_date = get_date_range(date)
-
-    evalscript_true_color = """
-        function setup() {
-            return {
-                input: [{
-                    bands: ["B02", "B03", "B04"]
-                }],
-                output: {
-                    bands: 3
-                }
-            };
-        }
-
-        function evaluatePixel(sample) {
-            return [sample.B04, sample.B03, sample.B02];
-        }
-    """
-
-    request_true_color = SentinelHubRequest(
-        evalscript=evalscript_true_color,
-        input_data=[
-            SentinelHubRequest.input_data(
-                data_collection=DataCollection.SENTINEL2_L2A,
-                time_interval=(start_date, end_date),
-            )
-        ],
-        responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
-        bbox=bbox,
-        size=bbox_size,
-        config=config,
-    )
-
-    for i in range(attempts):
-        try:
-            true_color_imgs = request_true_color.get_data()
-            continue
-        except DownloadFailedException as e:
-            response = getattr(e.request_exception, "response", None)
-            status_code = getattr(response, "status_code", None)
-
-            if status_code == 429:
-                print("Rate limit hit...")
-                time.sleep((2**i) * 10)
-                continue
-            raise e
-    if true_color_imgs:
-        save_image(save_path, true_color_imgs[0])
-    else:
-        raise RuntimeError(
-            "Failed to gather image data from API. Probably due to rate limit"
-        )
