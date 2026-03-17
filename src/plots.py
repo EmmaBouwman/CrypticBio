@@ -1,4 +1,4 @@
-#from datasets import load_dataset
+# from datasets import load_dataset
 import pandas as pd
 
 df = pd.read_parquet("part_0.parquet")
@@ -7,12 +7,12 @@ data = {
     "scientificName": ["A", "B", "C", "D", "E", "F"],
     "crypticGroup": [
         ["B", "C"],  # A connects to B, C
-        ["D"],       # B connects to D
-        [],          # C connects to nothing
-        ["A"],       # D connects back to A
-        ["F"],       # E connects to F
-        []           # F connects to nothing
-    ]
+        ["D"],  # B connects to D
+        [],  # C connects to nothing
+        ["A"],  # D connects back to A
+        ["F"],  # E connects to F
+        [],  # F connects to nothing
+    ],
 }
 
 test_df = pd.DataFrame(data)
