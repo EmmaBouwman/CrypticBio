@@ -21,14 +21,6 @@ from sentinelhub import (
 )
 from sentinelhub.exceptions import DownloadFailedException
 
-load_dotenv()
-
-base_folder = Path(os.getenv("DATA_FOLDER"))
-cb_image_path = base_folder / os.getenv("CB_IMAGE_PATH", "").strip("/")
-sh_image_path = base_folder / os.getenv("SENTINEL_IMAGE_PATH", "").strip("/")
-parquets_before_download = base_folder / "parquets"
-parquets = base_folder / os.getenv("PARQUETS_PATH", "").strip("/")
-db_path = base_folder / os.getenv("DATABASE")
 
 class DuckDBManager:
     # Always be used with "with DuckDBManager(<path>) as db:"
@@ -46,7 +38,7 @@ class DuckDBManager:
             self.con.close()
             self.con = None
     
-    def create_crypticbio_db(self, parquet_path: Path):
+    def create_db(self, parquet_path: Path):
         try:
             self.con.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.table_name} AS 
@@ -61,7 +53,7 @@ class DuckDBManager:
                 f"An unexpected error occurred while creating {self.table_name}"
             ) from e
 
-    def delete_crypticbio_db(self):
+    def delete_db(self):
         try:
             self.con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
         except duckdb.TransactionException:
