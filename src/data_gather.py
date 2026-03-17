@@ -30,6 +30,48 @@ parquets_before_download = base_folder / "parquets"
 parquets = base_folder / os.getenv("PARQUETS_PATH", "").strip("/")
 db_path = base_folder / os.getenv("DATABASE")
 
+class DuckDBManager:
+    # Always be used with "with DuckDBManager(<path>) as db:"
+    def __init__(self, db_path: Path, table_name: str = "crypticbio"):
+        self.db_path = db_path
+        self.table_name = table_name
+        self.con = None
+
+    def __enter__(self):
+        self.con = duckdb.connect(self.db_path)
+        return self
+
+    def __exit__(self, _type, _value, _traceback):
+        if self.con:
+            self.con.close()
+            self.con = None
+    
+    def create_crypticbio_db(self, parquet_path: Path):
+        try:
+            self.con.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self.table_name} AS 
+                SELECT * FROM read_parquet('{parquet_path}/*.parquet')
+            """)
+        except duckdb.IOException as e:
+            raise RuntimeError(
+                f"File Error: Could not read Parquet files at {parquet_path}."
+            ) from e
+        except Exception as e:
+            raise RuntimeError(
+                f"An unexpected error occurred while creating {self.table_name}"
+            ) from e
+
+    def delete_crypticbio_db(self):
+        try:
+            self.con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
+        except duckdb.TransactionException:
+            raise RuntimeError(f"Could not drop {self.table_name}, " \
+                               "because it is currently being used by another process.")
+        except Exception as e:
+            raise RuntimeError(
+                f"An unexpected error occurred while dropping {self.table_name}"
+            ) from e
+
 
 def check_exists_dir(path: Path):
     if not path.exists():
@@ -48,23 +90,6 @@ def download_parquests(parquet_path):
         resume_download=True,  # Allows you to restart if your internet cuts out
     )
     print(f"Finished downloading parquet files and are stored at {parquet_path}")
-
-
-def create_database(db_path, parquet_path):
-    if os.path.exists(db_path):
-        print(
-            "Database already exists, "
-            "make sure you check the database and delete if needed"
-        )
-    else:
-        con = duckdb.connect(db_path)
-
-        # Create a table directly from a glob pattern of parquet files
-        con.execute(f"""
-            CREATE OR REPLACE TABLE crypticbio AS 
-            SELECT * FROM read_parquet('{parquet_path}/CrypticBio/*.parquet')
-        """)
-        print(f"Finished creating the database at {db_path}")
 
 
 def save_image(path, image):
