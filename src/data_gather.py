@@ -1,38 +1,175 @@
-from huggingface_hub import snapshot_download
-import os
-from dotenv import load_dotenv
+from __future__ import annotations
+
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
+
 import duckdb
+import numpy as np
+from geopy.distance import distance
+from huggingface_hub import snapshot_download
+from PIL import Image
+from sentinelhub import (
+    CRS,
+    BBox,
+    DataCollection,
+    MimeType,
+    SentinelHubRequest,
+    bbox_to_dimensions,
+)
+from sentinelhub.exceptions import DownloadFailedException
 
-load_dotenv()
 
-base_folder = Path(os.getenv('DATA_FOLDER'))
-cb_image_path = base_folder / os.getenv('CB_IMAGE_PATH', '').strip('/')
-sentinel_image_path = base_folder / os.getenv('SENTINEL_IMAGE_PATH', '').strip('/')
-parquets = base_folder / "parquets"
-db_path = base_folder / os.getenv('DATABASE')
+class DuckDBManager:
+    # Always be used with "with DuckDBManager(<path>) as db:"
+    def __init__(self, db_path: Path, table_name: str = "crypticbio"):
+        self.db_path = db_path
+        self.table_name = table_name
+        self.con = None
+
+    def __enter__(self):
+        self.con = duckdb.connect(self.db_path)
+        return self
+
+    def __exit__(self, _type, _value, _traceback):
+        if self.con:
+            self.con.close()
+            self.con = None
+
+    def create_db(self, parquet_path: Path):
+        try:
+            self.con.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self.table_name} AS 
+                SELECT * FROM read_parquet('{parquet_path}/*.parquet')
+            """)
+        except duckdb.IOException as e:
+            raise RuntimeError(
+                f"File Error: Could not read Parquet files at {parquet_path}."
+            ) from e
+        except Exception as e:
+            raise RuntimeError(
+                f"An unexpected error occurred while creating {self.table_name}"
+            ) from e
+
+    def delete_db(self):
+        try:
+            self.con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
+        except duckdb.TransactionException:
+            raise RuntimeError(
+                f"Could not drop {self.table_name}, "
+                "because it is currently being used by another process."
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"An unexpected error occurred while dropping {self.table_name}"
+            ) from e
+
+
+class SentinelHubManager:
+    def __init__(self, config, width=2500, resolution=10, attempts=3):
+        self.config = config
+        self.width = width
+        self.resolution = resolution
+        self.attempts = attempts
+        self.evalscript = """
+            function setup() {
+                return {
+                    input: [{ bands: ["B02", "B03", "B04"] }],
+                    output: { bands: 3 }
+                };
+            }
+            function evaluatePixel(sample) {
+                return [sample.B04, sample.B03, sample.B02];
+            }
+        """
+
+    def _get_bounding_box(self, lat, lon):
+        d = distance(meters=self.width / 2)
+
+        max_lat = d.destination((lat, lon), bearing=0).latitude
+        min_lat = d.destination((lat, lon), bearing=180).latitude
+        max_lon = d.destination((lat, lon), bearing=90).longitude
+        min_lon = d.destination((lat, lon), bearing=270).longitude
+
+        return [min_lon, min_lat, max_lon, max_lat]
+
+    def _get_date_range(self, date_str, days_buffer=15):
+        center_date = datetime.strptime(date_str, "%Y-%m-%d")
+        delta = timedelta(days=days_buffer)
+
+        start = (center_date - delta).strftime("%Y-%m-%d")
+        end = (center_date + delta).strftime("%Y-%m-%d")
+
+        return start, end
+
+    def get_and_save_image(self, lat, lon, date, save_path):
+        bbox_coords = self._get_bounding_box(lat, lon)
+        bbox = BBox(bbox=bbox_coords, crs=CRS.WGS84)
+        bbox_size = bbox_to_dimensions(bbox, resolution=self.resolution)
+        start_date, end_date = self._get_date_range(date)
+
+        request = SentinelHubRequest(
+            evalscript=self.evalscript,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A,
+                    time_interval=(start_date, end_date),
+                )
+            ],
+            responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
+            bbox=bbox,
+            size=bbox_size,
+            config=self.config,
+        )
+
+        images = self._request_with_retry(request)
+
+        if images:
+            self._save_to_location(save_path, images[0])
+        else:
+            raise RuntimeError(f"No image found for {lat}, {lon}")
+
+    def _request_with_retry(self, request):
+        for i in range(self.attempts):
+            try:
+                return request.get_data()
+            except DownloadFailedException as e:
+                response = getattr(e.request_exception, "response", None)
+                status_code = getattr(response, "status_code", None)
+
+                if status_code == 429:
+                    print(f"Rate limit hit. Retrying in {(2**i) * 10}s...")
+                    time.sleep((2**i) * 10)
+                    continue
+                raise e
+        return None
+
+    def _save_to_location(self, path, image_array):
+        try:
+            img = Image.fromarray(image_array.astype(np.uint8))
+            img.save(path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Directory does not exist for path: {path}. ")
+        except PermissionError:
+            raise PermissionError(f"Permission denied: Cannot write to {path}. ")
+        except Exception as e:
+            raise RuntimeError(
+                "An unexpected error occurred while saving the image."
+            ) from e
+
+
+def check_exists_dir(path: Path):
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+
 
 def download_parquests(parquet_path):
     snapshot_download(
-        repo_id="gmanolache/CrypticBio", 
+        repo_id="gmanolache/CrypticBio",
         repo_type="dataset",
         local_dir=parquet_path,
         # This only grabs the parquet files in the 'CrypticBio' subdirectory
-        allow_patterns="CrypticBio/*.parquet", 
+        allow_patterns="CrypticBio/*.parquet",
         local_dir_use_symlinks=False,
-        resume_download=True  # Allows you to restart if your internet cuts out
+        resume_download=True,  # Allows you to restart if your internet cuts out
     )
-    print(f"Finished downloading parquet files and are stored at {parquet_path}")
-
-def create_database(db_path, parquet_path):
-    if os.path.exists(db_path):
-        print("Database already exists, make sure you check the database and delete if needed")
-    else:
-        con = duckdb.connect(db_path)
-
-        # Create a table directly from a glob pattern of parquet files
-        con.execute(f"""
-            CREATE OR REPLACE TABLE crypticbio AS 
-            SELECT * FROM read_parquet('{parquet_path}/CrypticBio/*.parquet')
-        """)
-        print(f"Finished creating the database at {db_path}")

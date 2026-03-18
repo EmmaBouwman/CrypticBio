@@ -6,8 +6,44 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "duckdb>=1.4.4",
+    "geopy>=2.4.1",
     "huggingface-hub>=1.7.1",
     "matplotlib>=3.9.4",
     "pandas>=2.3.3",
+    "numpy>=2.0.2",
     "python-dotenv>=1.2.1",
+    "sentinelhub>=3.11.5",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.15.6",
+]
+
+[build-system]
+requires = ["setuptools>=82.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+
+[tool.ruff.lint]
+# "E" (Error), "F" (Pyflakes/Bugs), "UP" (Upgrade syntax)
+# "I" (Isort - auto-sorts imports) "D" (Docstring stuff)
+select = ["E", "F", "UP", "I"]
+ignore = ["D"] # Ignore missing docstrings
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+# Standard 4-space indent
+indent-style = "space"
+quote-style = "double"
