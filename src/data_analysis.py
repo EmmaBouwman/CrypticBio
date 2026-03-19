@@ -5,6 +5,7 @@ import duckdb
 import os
 import matplotlib.pyplot as plt
 import time
+from src.data_gather import DuckDBManager
 
 
 TABLE_NAME = "crypticbio"
