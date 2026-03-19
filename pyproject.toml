@@ -11,6 +11,7 @@ dependencies = [
     "matplotlib>=3.9.4",
     "networkx>=3.2.1",
     "numpy>=2.0.2",
+    "pandas>=2.3.3",
     "python-dotenv>=1.2.1",
     "sentinelhub>=3.11.5",
 ]
