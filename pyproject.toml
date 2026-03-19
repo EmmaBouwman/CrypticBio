@@ -10,6 +10,7 @@ dependencies = [
     "huggingface-hub>=1.7.1",
     "matplotlib>=3.9.4",
     "pandas>=2.3.3",
+    "networkx>=3.2.1",
     "numpy>=2.0.2",
     "python-dotenv>=1.2.1",
     "sentinelhub>=3.11.5",
