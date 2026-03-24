@@ -173,3 +173,7 @@ def download_parquests(parquet_path):
         local_dir_use_symlinks=False,
         resume_download=True,  # Allows you to restart if your internet cuts out
     )
+
+
+def build_db(parquet_path, db_path, crypticbio_img_folder, sentinal_img_folder, sh_manager):
+    print("new function")
