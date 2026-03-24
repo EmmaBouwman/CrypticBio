@@ -122,5 +122,5 @@ def main():
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Process complete. Image saved to: {save_path}")
 
-if _name_ == "_main_":
+if __name__ == "_main_":
     main()
