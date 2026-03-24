@@ -3,133 +3,124 @@ import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
 import os
-from src.data_gather import DuckDBManager
+import matplotlib
+# Use 'Agg' for server environments to avoid display errors
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import networkx as nx
 import numpy as np
 
+# Importing your Manager
+from src.data_gather import DuckDBManager
 
-load_dotenv()
-base_folder = Path(os.getenv('DATA_FOLDER'))
-db_path = base_folder / os.getenv('DATABASE')
+def main():
+    load_dotenv()
+    base_folder = Path(os.getenv('DATA_FOLDER'))
+    db_path = base_folder / os.getenv('DATABASE')
 
-# Count occurrences per scientificName ##############################################
+    # 1. Get species row counts
+    print("Fetching species occurrence counts...")
+    with DuckDBManager(db_path) as db:
+        occ_df = db.con.execute("""
+            SELECT scientificName, COUNT(*) as occurrences
+            FROM crypticbio
+            GROUP BY scientificName
+        """).df()
 
-print("Counting occurrences per species...")
+    # Map: Species Name -> Row Count
+    occ_dict = dict(zip(occ_df['scientificName'], occ_df['occurrences']))
 
-with DuckDBManager(db_path) as db:
-    occ_df = db.con.execute("""
-        SELECT scientificName, COUNT(*) as occurrences
-        FROM crypticbio
-        GROUP BY scientificName
-    """).df()
+    # 2. Build the full connectivity graph
+    print("Building full species network...")
+    query = """
+    SELECT DISTINCT
+        scientificName AS source_species,
+        UNNEST(crypticGroup) AS target_species
+    FROM crypticbio
+    WHERE crypticGroup IS NOT NULL
+    """
+    with DuckDBManager(db_path) as db:
+        df = db.con.execute(query).df()
 
-occ_dict = dict(zip(occ_df['scientificName'], occ_df['occurrences']))
+    # Clean data (no self-loops, no duplicates)
+    df = df[df['source_species'] != df['target_species']]
+    df = df.drop_duplicates()
+    
+    G_full = nx.from_pandas_edgelist(df, 'source_species', 'target_species')
 
-# Create connectivity map ###########################################################
+    # 3. Filter Clusters by TOTAL Row Count and Assign Colors
+    print("Analyzing sub-clusters for total row count of ~30,000...")
+    
+    # Target range for the ENTIRE cluster sum
+    TARGET_TOTAL = 60000
+    TOLERANCE = 40000 # Finds clusters between 25k and 35k total rows
+    
+    matching_nodes = []
+    node_color_map = {} # Map node to cluster ID
+    cluster_count = 0
+    
+    # Iterate through every independent "island" in the graph
+    for component in nx.connected_components(G_full):
+        # Calculate the sum of rows for all species in this specific cluster
+        cluster_total_rows = sum(occ_dict.get(species, 0) for species in component)
+        
+        if (TARGET_TOTAL - TOLERANCE) <= cluster_total_rows <= (TARGET_TOTAL + TOLERANCE):
+            print(f"Found cluster {cluster_count}: Nodes={len(component)}, Total Rows={cluster_total_rows}")
+            matching_nodes.extend(list(component))
+            for node in component:
+                node_color_map[node] = cluster_count
+            cluster_count += 1
 
-print("Loading connectivity map...")
-query = """
-SELECT DISTINCT
-    scientificName AS source_species,
-    UNNEST(crypticGroup) AS target_species
-FROM crypticbio
-WHERE crypticGroup IS NOT NULL
-ORDER BY source_species
-"""
-with DuckDBManager(db_path) as db:
-    df = db.con.execute(query).df()
+    if not matching_nodes:
+        print("No sub-clusters found meeting the 30,000 total row criteria.")
+        return
 
-# Clean up: remove self-references and duplicates
-df = df[df['source_species'] != df['target_species']]
-df = df.drop_duplicates()
+    # Create a subgraph of only the clusters that met the criteria
+    G_final = G_full.subgraph(matching_nodes).copy()
 
-G = nx.from_pandas_edgelist(df, 'source_species', 'target_species')
+    # 4. Visualization with Color and Layout Enhancements
+    print(f"Drawing filtered network with {G_final.number_of_nodes()} total nodes in {cluster_count} clusters...")
+    plt.figure(figsize=(12, 12))
+    
+    # Use spring_layout with careful parameter tuning for clustered graphs
+    # Increased optimal distance (k) to help push distinct clusters apart
+    pos = nx.spring_layout(G_final, k=1.0/np.sqrt(G_final.number_of_nodes()), iterations=50, seed=42)
 
-# Assign node sizes ###############################################################3#
+    # Node sizes based on individual species counts (scaled for visibility)
+    individual_counts = [occ_dict.get(n, 1) for n in G_final.nodes()]
+    node_draw_sizes = [50 + (v / max(individual_counts) * 1000) for v in individual_counts]
 
-print("Assigning node sizes...")
-node_sizes = []
-for node in G.nodes():
-    occurrences = occ_dict.get(node, 1)  # default small value if missing
-    node_sizes.append(occurrences)
+    # Generate colors based on cluster IDs
+    # Using 'tab20' or 'tab10' for discrete, visually distinct colors
+    colormap = cm.get_cmap('tab20', cluster_count) # tab20 supports up to 20 distinct clusters well
+    node_colors = [colormap(node_color_map[n]) for n in G_final.nodes()]
 
-node_sizes = np.array(node_sizes)
-node_sizes = 50 + (node_sizes - node_sizes.min()) / (node_sizes.max() - node_sizes.min()) * 1950
+    nx.draw_networkx_nodes(
+        G_final, 
+        pos, 
+        node_size=node_draw_sizes, 
+        node_color=node_colors, 
+        alpha=0.9,
+        edgecolors='black',
+        linewidths=0.5
+    )
+    
+    # Standard edges (internal and potentially between clusters if any)
+    nx.draw_networkx_edges(G_final, pos, alpha=0.3, edge_color='gray')
+    
+    # Add labels so you know which species are in these 30k clusters
+    # nx.draw_networkx_labels(G_final, pos, font_size=8, font_weight='bold')
 
-# Draw network ######################################################################
+    plt.title(f"Distinct Sub-clusters with ~{TARGET_TOTAL} Combined Rows", fontsize=14)
+    plt.axis("off")
+    
+    output_dir = Path("data_analysis_results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    save_path = output_dir / "distinct_clusters_30k_total.png"
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"Process complete. Image saved to: {save_path}")
 
-print("Drawing network...")
-
-plt.figure(figsize=(12, 12))
-
-pos = nx.spring_layout(G, k=0.15, iterations=20)
-
-nx.draw_networkx_nodes(
-    G,
-    pos,
-    node_size=node_sizes,
-    alpha=0.7
-)
-
-nx.draw_networkx_edges(
-    G,
-    pos,
-    alpha=0.3
-)
-
-plt.title("Species connectivity network (Cryptic Groups)")
-plt.axis("off")
-plt.show()
-plt.savefig(f"src/data_analysis_results/network.png", dpi=300)
-
-
-
-
-
-
-
-
-
-
-
-
-# # This query scans the entire table to build a comprehensive connectivity map
-
-
-# # Fetching the connectivity map
-# # Note: For 171M rows, use this result carefully or chunk it if memory is an issue
-
-
-# import pandas as pd
-# import networkx as nx
-# from networkx.algorithms.community import asyn_lpa_communities, greedy
-
-# # 1. Load your connectivity map
-# # If your CSV is large, this is efficient
-# print("Loading data...")
-# df = pd.read_csv("./master_species_connectivity_map.csv")
-# G = nx.from_pandas_edgelist(df, 'source_species', 'target_species')
-
-# # 2. Find Communities (Clusters)
-# # This uses the Clauset-Newman-Moore greedy modularity maximization
-# print("Finding clusters... this might take a moment.")
-# communities = list(asyn_lpa_communities(G))
-
-# # 3. View the results
-# print(f"Found {len(communities)} distinct cryptic clusters.")
-
-# # 4. Map each species to a cluster ID
-# cluster_map = {}
-# for i, comm in enumerate(communities):
-#     for species in comm:
-#         cluster_map[species] = i
-
-# # Create a DataFrame to save the cluster labels
-# cluster_df = pd.DataFrame.from_dict(cluster_map, orient='index', columns=['cluster_id'])
-# cluster_df.to_csv("species_clusters.csv")
-# print("Cluster map saved to 'species_clusters.csv'")
-
-# # 5. Look at a specific cluster (e.g., the first one)
-# print("\n--- Example Species in Cluster 0 ---")
-# print(list(communities[0])[:10]) 
+if _name_ == "_main_":
+    main()

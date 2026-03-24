@@ -93,9 +93,8 @@ def get_all_unique_species(table, connection):
     return all_species_list
 
 
-def get_all_cryptic_groups(table, connection):
-    species = get_all_unique_species(table, connection)
-
+def get_all_cryptic_groups(table, connection, species):
+    
     total_species = len(species)
     used_species = set()
     groups = []
@@ -108,23 +107,23 @@ def get_all_cryptic_groups(table, connection):
         groups.append(group)
 
         for s in group:
-            used_species.add(s)
+            # used_species.add(s)
             if s in species:
                 species.remove(s)
         
-                processed = len(used_species)
-        remaining = len(species)
+                # processed = len(used_species)
+        # remaining = len(species)
 
-        elapsed = time.time() - start_time
-        avg_time_per_species = elapsed / processed if processed > 0 else 0
-        est_remaining = avg_time_per_species * remaining
+        # elapsed = time.time() - start_time
+        # avg_time_per_species = elapsed / processed if processed > 0 else 0
+        # est_remaining = avg_time_per_species * remaining
 
-        print(f"Processed: {processed}/{total_species} ({processed/total_species:.2%})")
-        print(f"Current group size: {len(group)}")
-        print(f"Remaining species: {remaining}")
-        print(f"Elapsed time: {elapsed/60:.2f} minutes")
-        print(f"Estimated remaining time: {est_remaining/60:.2f} minutes")
-        print("----")
+        # print(f"Processed: {processed}/{total_species} ({processed/total_species:.2%})")
+        # print(f"Current group size: {len(group)}")
+        # print(f"Remaining species: {remaining}")
+        # print(f"Elapsed time: {elapsed/60:.2f} minutes")
+        # print(f"Estimated remaining time: {est_remaining/60:.2f} minutes")
+        # print("----")
     return groups
 
 
@@ -170,7 +169,9 @@ if __name__ == "__main__":
     """).fetchall()
     print(table_length)
 
-    all_cryptic_groups = get_all_cryptic_groups(TABLE_NAME, con)
+    # species = get_all_unique_species(table, connection)
+    species = 'Argiope aurantia'
+    all_cryptic_groups = get_all_cryptic_groups(TABLE_NAME, con, species)
     occurrences_df = count_occurrences(TABLE_NAME, con, all_cryptic_groups)
     occurrences_df.to_csv("data_analysis_results/cryptic_groups_occurrences.csv", index=False)
     plot_occurrences(occurrences_df, "cryptic_groups_plot.png")
