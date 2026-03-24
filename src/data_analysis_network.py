@@ -4,21 +4,21 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import matplotlib
-# Use 'Agg' for server environments to avoid display errors
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import networkx as nx
 import numpy as np
-
-# Importing your Manager
 from src.data_gather import DuckDBManager
 
-def main():
-    load_dotenv()
-    base_folder = Path(os.getenv('DATA_FOLDER'))
-    db_path = base_folder / os.getenv('DATABASE')
 
+load_dotenv()
+base_folder = Path(os.getenv('DATA_FOLDER'))
+db_path = base_folder / os.getenv('DATABASE')
+
+
+
+def main():
     # 1. Get species row counts
     print("Fetching species occurrence counts...")
     with DuckDBManager(db_path) as db:
@@ -79,6 +79,71 @@ def main():
     # Create a subgraph of only the clusters that met the criteria
     G_final = G_full.subgraph(matching_nodes).copy()
 
+    # 3.5 --- Build cluster summary + node table ---
+    print("Building cluster statistics...")
+
+    cluster_summaries = []
+    node_records = []
+
+    for cluster_id in range(cluster_count):
+        # Get nodes in this cluster
+        cluster_nodes = [n for n, cid in node_color_map.items() if cid == cluster_id]
+        
+        # Species count
+        num_species = len(cluster_nodes)
+        
+        # Total occurrences
+        total_occurrences = sum(occ_dict.get(n, 0) for n in cluster_nodes)
+        
+        # Average occurrences
+        avg_occurrences = total_occurrences / num_species if num_species > 0 else 0
+
+        cluster_summaries.append({
+            "cluster_id": cluster_id,
+            "num_species": num_species,
+            "total_occurrences": total_occurrences,
+            "avg_occurrences": avg_occurrences
+        })
+
+        # Per-node records
+        for node in cluster_nodes:
+            node_records.append({
+                "species": node,
+                "cluster_id": cluster_id,
+                "occurrences": occ_dict.get(node, 0)
+            })
+
+    # Convert to DataFrames
+    cluster_df = pd.DataFrame(cluster_summaries)
+    nodes_df = pd.DataFrame(node_records)
+
+    # Sort for readability
+    cluster_df = cluster_df.sort_values(by="total_occurrences", ascending=False)
+    nodes_df = nodes_df.sort_values(by=["cluster_id", "occurrences"], ascending=[True, False])
+
+    # --- Save outputs ---
+    output_dir = Path("data_analysis_results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Cluster summary
+    cluster_path = output_dir / "cluster_summary.csv"
+    cluster_df.to_csv(cluster_path, index=False)
+
+    # 2. Node table
+    nodes_path = output_dir / "nodes_with_clusters.csv"
+    nodes_df.to_csv(nodes_path, index=False)
+
+    # 3. Edge list (filtered graph only)
+    edges_df = nx.to_pandas_edgelist(G_final)
+    edges_path = output_dir / "edges.csv"
+    edges_df.to_csv(edges_path, index=False)
+
+    print(f"Saved cluster summary to: {cluster_path}")
+    print(f"Saved node table to: {nodes_path}")
+    print(f"Saved edge list to: {edges_path}")
+
+    print(cluster_df.head())
+
     # 4. Visualization with Color and Layout Enhancements
     print(f"Drawing filtered network with {G_final.number_of_nodes()} total nodes in {cluster_count} clusters...")
     plt.figure(figsize=(12, 12))
@@ -122,5 +187,5 @@ def main():
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Process complete. Image saved to: {save_path}")
 
-if __name__ == "_main_":
+if __name__ == "__main__":
     main()
