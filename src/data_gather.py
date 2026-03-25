@@ -70,6 +70,16 @@ class DuckDBManager:
 
         print(f"Database {self.table_name} extended with id and image columns")
 
+        #check:
+        print("First 5 rows after extending:")
+        result = self.con.execute(f"""
+            SELECT id, crypticbio_image, sentinel_image 
+            FROM {self.table_name} 
+            LIMIT 5
+        """).fetchall()
+        for row in result:
+            print(row)
+
 
 
     def delete_db(self):
