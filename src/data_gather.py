@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
+import glob
 import numpy as np
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
@@ -175,7 +176,10 @@ def download_parquests(parquet_path):
     )
 
 
-def build_db(parquet_path, db_path, crypticbio_img_folder, sentinal_img_folder, sh_manager):
+def build_db(parquet_path, db_path, crypticbio_img_folder, sentinel_img_folder, sh_manager):
     check_exists_dir(crypticbio_img_folder)
-    check_exists_dir(sentinal_img_folder)
+    check_exists_dir(sentinel_img_folder)
+
+    parquet_files = sorted(glob.glob(str(parquet_path / "*.parquet")))
+    print(f"{len(parquet_files)} files")
 

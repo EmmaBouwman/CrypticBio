@@ -24,5 +24,9 @@ from src.data_gather import SentinelHubManager, check_exists_dir, build_db
 
 tmp_folder = Path("./tmp")
 check_exists_dir(tmp_folder)
-build_db(None, None, tmp_folder, tmp_folder, None)
+build_db(parquet_path=Path("/home/s2832674/.cache/huggingface/datasets/.../CrypticBio"),
+    db_path=Path("/home/s2832674/CrypticBio/dataset/crypticbio.duckdb"),
+    crypticbio_img_folder=Path("/home/s2832674/CrypticBio/dataset/images/crypticbio"),
+    sentinel_img_folder=Path("/home/s2832674/CrypticBio/dataset/images/sentinel"),
+    sh_manager=None,) 
 
