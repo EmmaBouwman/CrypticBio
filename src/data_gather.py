@@ -206,18 +206,6 @@ def download_parquests(parquet_path):
     )
 
 
-def build_db(parquet_path, db_path, crypticbio_img_folder, sentinel_img_folder, sh_manager):
-    check_exists_dir(crypticbio_img_folder)
-    check_exists_dir(sentinel_img_folder)
 
-    parquet_files = sorted(glob.glob(str(parquet_path / "*.parquet")))
-    print(f"{len(parquet_files)} files")
-
-
-    batch_files = parquet_files[:1]
-    dfs = [pd.read_parquet(f) for f in batch_files]
-    df_batch = pd.concat(dfs, ignore_index=True)
-    # print(df_batch.shape)
-    print(df_batch.columns)
 
 
