@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-
+import pandas as pd
 import duckdb
 import glob
 import numpy as np
@@ -51,6 +51,9 @@ class DuckDBManager:
             raise RuntimeError(
                 f"An unexpected error occurred while creating {self.table_name}"
             ) from e
+        
+    def extend_db(self):
+        print("extend db")
 
     def delete_db(self):
         try:
@@ -64,6 +67,8 @@ class DuckDBManager:
             raise RuntimeError(
                 f"An unexpected error occurred while dropping {self.table_name}"
             ) from e
+    
+    
 
 
 class SentinelHubManager:
@@ -182,4 +187,12 @@ def build_db(parquet_path, db_path, crypticbio_img_folder, sentinel_img_folder, 
 
     parquet_files = sorted(glob.glob(str(parquet_path / "*.parquet")))
     print(f"{len(parquet_files)} files")
+
+
+    batch_files = parquet_files[:1]
+    dfs = [pd.read_parquet(f) for f in batch_files]
+    df_batch = pd.concat(dfs, ignore_index=True)
+    # print(df_batch.shape)
+    print(df_batch.columns)
+
 
