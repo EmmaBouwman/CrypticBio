@@ -176,4 +176,6 @@ def download_parquests(parquet_path):
 
 
 def build_db(parquet_path, db_path, crypticbio_img_folder, sentinal_img_folder, sh_manager):
-    print("new function")
+    check_exists_dir(crypticbio_img_folder)
+    check_exists_dir(sentinal_img_folder)
+
