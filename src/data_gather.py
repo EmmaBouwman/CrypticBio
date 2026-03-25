@@ -52,7 +52,7 @@ class DuckDBManager:
                 f"An unexpected error occurred while creating {self.table_name}"
             ) from e
         
-    def extend_db(self, crypticbio_img_folder: Path, sentinel_img_folder: Path):
+    def extend_db(self, crypticbio_img_folder: Path, sentinel_img_folder: Path, show_sample=True):
         # adding column
         self.con.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS id INTEGER")
         self.con.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS crypticbio_image VARCHAR")
@@ -71,16 +71,15 @@ class DuckDBManager:
         print(f"Database {self.table_name} extended with id and image columns")
 
         #check:
-        print("First 5 rows after extending:")
-        result = self.con.execute(f"""
-            SELECT id, crypticbio_image, sentinel_image 
-            FROM {self.table_name} 
-            LIMIT 5
-        """).fetchall()
-        for row in result:
-            print(row)
-
-
+        if show_sample:
+            print("First 5 rows after extending:")
+            result = self.con.execute(f"""
+                SELECT id, crypticbio_image, sentinel_image 
+                FROM {self.table_name} 
+                LIMIT 5
+            """).fetchall()
+            for row in result:
+                print(row)
 
     def delete_db(self):
         try:
@@ -96,7 +95,6 @@ class DuckDBManager:
             ) from e
     
     
-
 
 class SentinelHubManager:
     def __init__(self, config, width=2500, resolution=10, attempts=3):
