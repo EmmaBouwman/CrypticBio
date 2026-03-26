@@ -15,7 +15,7 @@ config.sh_client_secret = os.getenv("SH_CLIENT_SECRET")
 sh = SentinelHubManager(config)
 
 base_path = Path(os.getenv("BASE_FOLDER"))
-sh_image_path = base_path / os.getenv("SENTINEL_IMAGE_PATH", "images_sh")
+sh_image_path = base_path / os.getenv("SH_IMAGE_PATH", "images_sh")
 check_exists_dir(sh_image_path)
 
 target_date = "2022-03-17"
