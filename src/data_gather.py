@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import time
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
 import numpy as np
+import requests
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -142,7 +144,9 @@ class SentinelHubManager:
                     time.sleep((2**i) * 10)
                     continue
                 raise e
-        return None
+        warnings.warn(
+            f"Failed to download image after {self.attempts} attempts.", RuntimeWarning
+        )
 
     def _save_to_location(self, path, image_array):
         try:
@@ -156,6 +160,41 @@ class SentinelHubManager:
             raise RuntimeError(
                 "An unexpected error occurred while saving the image."
             ) from e
+
+
+class CrypticImageManager:
+    def __init__(self, row, attempts=3):
+        self.id = str(row["id"])
+        self.url = row["url"]
+        self.attempts = attempts
+        self.save_path = row["crypticbio_image"]
+
+    def get_and_save_image(self):
+        content = self._request_with_retry()
+        if content:
+            self._save_to_location(content)
+            return True
+        return False
+
+    def _save_to_location(self, content):
+        try:
+            with open(self.save_path, "wb") as f:
+                f.write(content)
+        except OSError as e:
+            raise OSError(f"Error saving file {self.id}") from e
+
+    def _request_with_retry(self):
+        for i in range(self.attempts):
+            try:
+                response = requests.get(self.url, timeout=10)
+                response.raise_for_status()
+                return response.content
+            except requests.RequestException:
+                time.sleep(10 * (2**i))
+
+        warnings.warn(
+            f"Failed to download image after {self.attempts} attempts.", RuntimeWarning
+        )
 
 
 def check_exists_dir(path: Path):
