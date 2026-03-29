@@ -12,14 +12,15 @@ import numpy as np
 from src.data_gather import DuckDBManager
 
 
+TARGET_TOTAL = 60000  # Target range for the ENTIRE cluster sum
+TOLERANCE = 40000 # Finds clusters between 25k and 35k total rows
+
 load_dotenv()
 base_folder = Path(os.getenv('DATA_FOLDER'))
 db_path = base_folder / os.getenv('DATABASE')
 
 
-
-def main():
-    # 1. Get species row counts
+def count_occurrences():
     print("Fetching species occurrence counts...")
     with DuckDBManager(db_path) as db:
         occ_df = db.con.execute("""
@@ -28,11 +29,11 @@ def main():
             GROUP BY scientificName
         """).df()
 
-    # Map: Species Name -> Row Count
     occ_dict = dict(zip(occ_df['scientificName'], occ_df['occurrences']))
+    return occ_dict
 
-    # 2. Build the full connectivity graph
-    print("Building full species network...")
+
+def build_network():
     query = """
     SELECT DISTINCT
         scientificName AS source_species,
@@ -46,21 +47,15 @@ def main():
     # Clean data (no self-loops, no duplicates)
     df = df[df['source_species'] != df['target_species']]
     df = df.drop_duplicates()
-    
-    G_full = nx.from_pandas_edgelist(df, 'source_species', 'target_species')
 
-    # 3. Filter Clusters by TOTAL Row Count and Assign Colors
-    print("Analyzing sub-clusters for total row count of ~30,000...")
-    
-    # Target range for the ENTIRE cluster sum
-    TARGET_TOTAL = 60000
-    TOLERANCE = 40000 # Finds clusters between 25k and 35k total rows
-    
+    G_full = nx.from_pandas_edgelist(df, 'source_species', 'target_species')
+    return G_full
+
+def filter_network_clusters(G_full, occ_dict):
     matching_nodes = []
-    node_color_map = {} # Map node to cluster ID
+    node_color_map = {}
     cluster_count = 0
     
-    # Iterate through every independent "island" in the graph
     for component in nx.connected_components(G_full):
         # Calculate the sum of rows for all species in this specific cluster
         cluster_total_rows = sum(occ_dict.get(species, 0) for species in component)
@@ -77,17 +72,17 @@ def main():
         return
 
     # Create a subgraph of only the clusters that met the criteria
-    G_final = G_full.subgraph(matching_nodes).copy()
+    G_filtered = G_full.subgraph(matching_nodes).copy()
+    return G_filtered, cluster_count, node_color_map
 
-    # 3.5 --- Build cluster summary + node table ---
-    print("Building cluster statistics...")
 
+def get_cluster_data(cluster_count, color_map, occ_dict):
     cluster_summaries = []
     node_records = []
 
     for cluster_id in range(cluster_count):
         # Get nodes in this cluster
-        cluster_nodes = [n for n, cid in node_color_map.items() if cid == cluster_id]
+        cluster_nodes = [n for n, cid in color_map.items() if cid == cluster_id]
         
         # Species count
         num_species = len(cluster_nodes)
@@ -121,10 +116,28 @@ def main():
     cluster_df = cluster_df.sort_values(by="total_occurrences", ascending=False)
     nodes_df = nodes_df.sort_values(by=["cluster_id", "occurrences"], ascending=[True, False])
 
-    # --- Save outputs ---
-    output_dir = Path("data_analysis_results")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    return cluster_df, nodes_df
 
+
+def draw_boxplot(nodes_df, output_dir):
+    grouped = nodes_df.groupby("cluster_id")["occurrences"].apply(list)
+
+    # Prepare data for boxplot
+    data_to_plot = grouped.values
+    labels = grouped.index
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    plt.boxplot(data_to_plot, labels=labels)
+
+    plt.xlabel("Cluster ID")
+    plt.ylabel("Occurrences")
+    plt.title("Occurrences per Cluster")
+    path = output_dir / "boxplot.png"
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+
+
+def save_cluster_data(nodes_df, output_dir, cluster_df, G_filtered):
     # 1. Cluster summary
     cluster_path = output_dir / "cluster_summary.csv"
     cluster_df.to_csv(cluster_path, index=False)
@@ -134,7 +147,7 @@ def main():
     nodes_df.to_csv(nodes_path, index=False)
 
     # 3. Edge list (filtered graph only)
-    edges_df = nx.to_pandas_edgelist(G_final)
+    edges_df = nx.to_pandas_edgelist(G_filtered)
     edges_path = output_dir / "edges.csv"
     edges_df.to_csv(edges_path, index=False)
 
@@ -143,26 +156,16 @@ def main():
     print(f"Saved edge list to: {edges_path}")
 
     print(cluster_df.head())
+    return cluster_df
 
-    # 4. Visualization with Color and Layout Enhancements
-    print(f"Drawing filtered network with {G_final.number_of_nodes()} total nodes in {cluster_count} clusters...")
+
+def draw_network(output_dir, G_filtered, node_draw_sizes, node_colors):
     plt.figure(figsize=(12, 12))
-    
-    # Use spring_layout with careful parameter tuning for clustered graphs
-    # Increased optimal distance (k) to help push distinct clusters apart
-    pos = nx.spring_layout(G_final, k=1.0/np.sqrt(G_final.number_of_nodes()), iterations=50, seed=42)
 
-    # Node sizes based on individual species counts (scaled for visibility)
-    individual_counts = [occ_dict.get(n, 1) for n in G_final.nodes()]
-    node_draw_sizes = [50 + (v / max(individual_counts) * 1000) for v in individual_counts]
-
-    # Generate colors based on cluster IDs
-    # Using 'tab20' or 'tab10' for discrete, visually distinct colors
-    colormap = cm.get_cmap('tab20', cluster_count) # tab20 supports up to 20 distinct clusters well
-    node_colors = [colormap(node_color_map[n]) for n in G_final.nodes()]
+    pos = nx.spring_layout(G_filtered, k=1.0/np.sqrt(G_filtered.number_of_nodes()), iterations=50, seed=42)
 
     nx.draw_networkx_nodes(
-        G_final, 
+        G_filtered, 
         pos, 
         node_size=node_draw_sizes, 
         node_color=node_colors, 
@@ -171,21 +174,48 @@ def main():
         linewidths=0.5
     )
     
-    # Standard edges (internal and potentially between clusters if any)
-    nx.draw_networkx_edges(G_final, pos, alpha=0.3, edge_color='gray')
+    nx.draw_networkx_edges(G_filtered, pos, alpha=0.3, edge_color='gray')
     
     # Add labels so you know which species are in these 30k clusters
-    # nx.draw_networkx_labels(G_final, pos, font_size=8, font_weight='bold')
+    #nx.draw_networkx_labels(G_filtered, pos, font_size=8, font_weight='bold')
 
-    plt.title(f"Distinct Sub-clusters with ~{TARGET_TOTAL} Combined Rows", fontsize=14)
+    plt.title(f"Distinct Sub-clusters with ~{TARGET_TOTAL} combined rows", fontsize=14)
     plt.axis("off")
-    
-    output_dir = Path("data_analysis_results")
-    output_dir.mkdir(parents=True, exist_ok=True)
     
     save_path = output_dir / "distinct_clusters_30k_total.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Process complete. Image saved to: {save_path}")
+    print(f"Image saved to: {save_path}")
+
+
+def main():
+
+    print("Building full species network...")
+    occurrences_dict = count_occurrences()  # Get species row counts
+    G_full = build_network()  # Build the full connectivity graph
+
+    # Filter clusters by TOTAL row count and assign colors
+    print("Analyzing sub-clusters...")
+    G_filtered, nr_clusters, nodes_color_map = filter_network_clusters(G_full, occurrences_dict)  # Build the full connectivity graph
+
+    # Build cluster summary + node table
+    print("Building cluster statistics...")
+    cluster_df, nodes_df = get_cluster_data(nr_clusters, nodes_color_map, occurrences_dict)
+
+
+    output_dir = Path("data_analysis_results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    draw_boxplot(nodes_df, output_dir)
+    save_cluster_data(nodes_df, output_dir, cluster_df, G_filtered)
+
+    individual_counts = [occurrences_dict.get(n, 1) for n in G_filtered.nodes()]
+    node_draw_sizes = [50 + (v / max(individual_counts) * 1000) for v in individual_counts]
+    colormap = cm.get_cmap('tab20', nr_clusters) # tab20 supports up to 20 distinct clusters well
+    node_colors = [colormap(nodes_color_map[n]) for n in G_filtered.nodes()]
+
+    print(f"Drawing filtered network with {G_filtered.number_of_nodes()} total nodes in {nr_clusters} clusters...")
+    draw_network(output_dir, G_filtered, node_draw_sizes, node_colors)
+
 
 if __name__ == "__main__":
     main()
