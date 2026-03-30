@@ -204,8 +204,3 @@ def download_parquests(parquet_path):
         local_dir_use_symlinks=False,
         resume_download=True,  # Allows you to restart if your internet cuts out
     )
-
-
-
-
-
