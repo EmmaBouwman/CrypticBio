@@ -53,6 +53,46 @@ class DuckDBManager:
                 f"An unexpected error occurred while creating {self.table_name}"
             ) from e
 
+    def extend_db(
+        self, crypticbio_img_folder: Path, sentinel_img_folder: Path, show_sample=True
+    ):
+
+        # adding columns
+        self.con.execute(
+            f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS id INTEGER"
+        )
+        self.con.execute(
+            f"ALTER TABLE {self.table_name}"
+            + "ADD COLUMN IF NOT EXISTS crypticbio_image VARCHAR"
+        )
+        self.con.execute(
+            f"ALTER TABLE {self.table_name}"
+            + "ADD COLUMN IF NOT EXISTS sentinel_image VARCHAR"
+        )
+
+        # row ID
+        self.con.execute(f"UPDATE {self.table_name} SET id = rowid")
+
+        # image paths
+        self.con.execute(f"""
+        UPDATE {self.table_name}
+        SET crypticbio_image = '{crypticbio_img_folder}/' || id || '.png',
+            sentinel_image = '{sentinel_img_folder}/' || id || '.png'
+        """)
+
+        print(f"Database {self.table_name} extended with id and image columns")
+
+        # check:
+        if show_sample:
+            print("First 5 rows after extending:")
+            result = self.con.execute(f"""
+                SELECT id, crypticbio_image, sentinel_image 
+                FROM {self.table_name} 
+                LIMIT 5
+            """).fetchall()
+            for row in result:
+                print(row)
+
     def delete_db(self):
         try:
             self.con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
