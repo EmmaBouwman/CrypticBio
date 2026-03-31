@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 from sentinelhub import SHConfig
-from pathlib import Path
+
 from src.data_gather import SentinelHubManager, check_exists_dir
 
 load_dotenv(".env_sentinel")
@@ -20,4 +21,3 @@ check_exists_dir(sh_image_path)
 target_date = "2022-03-17"
 target_file = sh_image_path / "2_2500.png"
 sh.get_and_save_image(51.788106, 5.92189, target_date, target_file)
-

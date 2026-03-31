@@ -3,9 +3,8 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-import pandas as pd
+
 import duckdb
-import glob
 import numpy as np
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
@@ -51,17 +50,28 @@ class DuckDBManager:
             raise RuntimeError(
                 f"An unexpected error occurred while creating {self.table_name}"
             ) from e
-        
-    def extend_db(self, crypticbio_img_folder: Path, sentinel_img_folder: Path, show_sample=True):
-        # adding column
-        self.con.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS id INTEGER")
-        self.con.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS crypticbio_image VARCHAR")
-        self.con.execute(f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS sentinel_image VARCHAR")
 
-        #row ID
+    def extend_db(
+        self, crypticbio_img_folder: Path, sentinel_img_folder: Path, show_sample=True
+    ):
+
+        # adding columns
+        self.con.execute(
+            f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS id INTEGER"
+        )
+        self.con.execute(
+            f"ALTER TABLE {self.table_name}"
+            + "ADD COLUMN IF NOT EXISTS crypticbio_image VARCHAR"
+        )
+        self.con.execute(
+            f"ALTER TABLE {self.table_name}"
+            + "ADD COLUMN IF NOT EXISTS sentinel_image VARCHAR"
+        )
+
+        # row ID
         self.con.execute(f"UPDATE {self.table_name} SET id = rowid")
 
-        #image paths
+        # image paths
         self.con.execute(f"""
         UPDATE {self.table_name}
         SET crypticbio_image = '{crypticbio_img_folder}/' || id || '.png',
@@ -70,7 +80,7 @@ class DuckDBManager:
 
         print(f"Database {self.table_name} extended with id and image columns")
 
-        #check:
+        # check:
         if show_sample:
             print("First 5 rows after extending:")
             result = self.con.execute(f"""
@@ -93,8 +103,7 @@ class DuckDBManager:
             raise RuntimeError(
                 f"An unexpected error occurred while dropping {self.table_name}"
             ) from e
-    
-    
+
 
 class SentinelHubManager:
     def __init__(self, config, width=2500, resolution=10, attempts=3):

@@ -1,11 +1,13 @@
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-import torch
-import duckdb
-from pathlib import Path
-import numpy as np
 import os
+from pathlib import Path
+
+import duckdb
+import numpy as np
+import torch
 from dotenv import load_dotenv
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
+
 
 class CrypticBioDataset(Dataset):
     def __init__(self, db_path: Path, table_name: str = "crypticbio", transform=None):
@@ -27,24 +29,26 @@ class CrypticBioDataset(Dataset):
         row = self.data[idx]
         _, cb_path, sh_path = row
 
-       
         cb_img = Image.open(cb_path).convert("RGB")
         sh_img = Image.open(sh_path).convert("RGB")
 
-        
         if self.transform:
             cb_img = self.transform(cb_img)
             sh_img = self.transform(sh_img)
         else:
-          
             cb_img = torch.tensor(np.array(cb_img)).permute(2, 0, 1).float() / 255.0
             sh_img = torch.tensor(np.array(sh_img)).permute(2, 0, 1).float() / 255.0
 
         return {"crypticbio": cb_img, "sentinel": sh_img}
 
-def get_dataloader(db_path: Path, batch_size=4, shuffle=True, num_workers=2, transform=None):
+
+def get_dataloader(
+    db_path: Path, batch_size=4, shuffle=True, num_workers=2, transform=None
+):
     dataset = CrypticBioDataset(db_path=db_path, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers
+    )
     return dataloader
 
 

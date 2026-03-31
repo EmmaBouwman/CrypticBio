@@ -1,11 +1,9 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
-from sentinelhub import SHConfig
-from pathlib import Path
+
 from src.data_gather import DuckDBManager
-
-
 
 load_dotenv(".env")
 
