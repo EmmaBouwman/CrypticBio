@@ -1,11 +1,5 @@
-import pandas as pd
-from dotenv import load_dotenv
-from pathlib import Path
 import duckdb
-import os
-from data_analysis import get_cryptic_group, get_all_unique_species, get_all_cryptic_groups, count_occurrences, plot_occurrences
-import matplotlib.pyplot as plt
-
+from data_analysis import count_occurrences, get_all_cryptic_groups, plot_occurrences
 
 con = duckdb.connect(":memory:")
 TABLE_NAME = "test"

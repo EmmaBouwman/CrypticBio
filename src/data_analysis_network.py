@@ -33,6 +33,17 @@ def count_occurrences():
     return occ_dict
 
 
+def fetch_ids_with_species_and_location():
+    with DuckDBManager(db_path) as db:
+        df = db.con.execute("""
+            SELECT id, scientificName, decimalLatitude, decimalLongitude
+            FROM crypticbio
+            WHERE decimalLatitude IS NOT NULL
+              AND decimalLongitude IS NOT NULL
+        """).df()
+    return df
+
+
 def build_network():
     query = """
     SELECT DISTINCT
@@ -50,6 +61,7 @@ def build_network():
 
     G_full = nx.from_pandas_edgelist(df, 'source_species', 'target_species')
     return G_full
+
 
 def filter_network_clusters(G_full, occ_dict):
     matching_nodes = []
@@ -119,6 +131,35 @@ def get_cluster_data(cluster_count, color_map, occ_dict):
     return cluster_df, nodes_df
 
 
+def map_ids_to_clusters(df, nodes_color_map):
+    df["cluster_id"] = df["scientificName"].map(nodes_color_map)
+    df = df.dropna(subset=["cluster_id"])
+    df["cluster_id"] = df["cluster_id"].astype(int)
+    return df
+    
+
+def pivot_ids_by_cluster(id_df):
+    grouped = id_df.groupby("cluster_id")["id"].apply(list)
+    max_len = max(len(lst) for lst in grouped)
+
+    data = {}
+    for cluster_id, ids in grouped.items():
+        padded = ids + [pd.NA] * (max_len - len(ids))
+        data[f"cluster_{cluster_id}"] = padded
+
+    wide_df = pd.DataFrame(data)
+
+    wide_df = wide_df.astype("Int64")
+
+    return wide_df
+
+
+def save_cluster_ids(id_wide_df, output_dir):
+    path = output_dir / "cluster_ids_wide.csv"
+    id_wide_df.to_csv(path, index=False)
+    print(f"Saved cluster IDs to: {path}")
+    
+
 def draw_boxplot(nodes_df, output_dir):
     grouped = nodes_df.groupby("cluster_id")["occurrences"].apply(list)
 
@@ -187,34 +228,66 @@ def draw_network(output_dir, G_filtered, node_draw_sizes, node_colors):
     print(f"Image saved to: {save_path}")
 
 
-def main():
+def draw_world_map(df, output_dir, nr_clusters):
+    plt.figure(figsize=(14, 7))
 
-    print("Building full species network...")
+    # Use a categorical colormap
+    colormap = cm.get_cmap('tab20', nr_clusters)
+
+    for cluster_id in range(nr_clusters):
+        cluster_data = df[df["cluster_id"] == cluster_id]
+
+        plt.scatter(
+            cluster_data["decimalLongitude"],
+            cluster_data["decimalLatitude"],
+            s=10,
+            alpha=0.6,
+            color=colormap(cluster_id),
+            label=f"Cluster {cluster_id}"
+        )
+
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.title("Global Distribution of Clusters")
+
+    plt.legend(markerscale=2, fontsize=8)
+    plt.grid(True)
+
+    path = output_dir / "worldmap_clusters.png"
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+    print(f"World map saved to: {path}")
+
+
+def main():
     occurrences_dict = count_occurrences()  # Get species row counts
     G_full = build_network()  # Build the full connectivity graph
 
-    # Filter clusters by TOTAL row count and assign colors
-    print("Analyzing sub-clusters...")
-    G_filtered, nr_clusters, nodes_color_map = filter_network_clusters(G_full, occurrences_dict)  # Build the full connectivity graph
+    G_filtered, nr_clusters, nodes_color_map = filter_network_clusters(G_full, occurrences_dict)
 
-    # Build cluster summary + node table
-    print("Building cluster statistics...")
     cluster_df, nodes_df = get_cluster_data(nr_clusters, nodes_color_map, occurrences_dict)
 
-
-    output_dir = Path("data_analysis_results")
+    output_dir = Path("results/data_analysis")
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    id_df = fetch_ids_with_species_and_location()
+    id_cluster_df = map_ids_to_clusters(id_df, nodes_color_map)
+    id_wide_df = pivot_ids_by_cluster(id_cluster_df)
+    save_cluster_ids(id_wide_df, output_dir)
 
     draw_boxplot(nodes_df, output_dir)
     save_cluster_data(nodes_df, output_dir, cluster_df, G_filtered)
 
     individual_counts = [occurrences_dict.get(n, 1) for n in G_filtered.nodes()]
     node_draw_sizes = [50 + (v / max(individual_counts) * 1000) for v in individual_counts]
-    colormap = cm.get_cmap('tab20', nr_clusters) # tab20 supports up to 20 distinct clusters well
+
+    colormap = cm.get_cmap('tab20', nr_clusters)  # tab20 supports up to 20 distinct clusters well
     node_colors = [colormap(nodes_color_map[n]) for n in G_filtered.nodes()]
 
-    print(f"Drawing filtered network with {G_filtered.number_of_nodes()} total nodes in {nr_clusters} clusters...")
     draw_network(output_dir, G_filtered, node_draw_sizes, node_colors)
+
+    location_cluster_df = map_ids_to_clusters(id_df, nodes_color_map)
+
+    draw_world_map(location_cluster_df, output_dir, nr_clusters)
 
 
 if __name__ == "__main__":
