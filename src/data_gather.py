@@ -62,11 +62,11 @@ class DuckDBManager:
             f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS id INTEGER"
         )
         self.con.execute(
-            f"ALTER TABLE {self.table_name}"
+            f"ALTER TABLE {self.table_name} "
             + "ADD COLUMN IF NOT EXISTS crypticbio_image VARCHAR"
         )
         self.con.execute(
-            f"ALTER TABLE {self.table_name}"
+            f"ALTER TABLE {self.table_name} "
             + "ADD COLUMN IF NOT EXISTS sentinel_image VARCHAR"
         )
 
