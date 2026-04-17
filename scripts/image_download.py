@@ -45,17 +45,36 @@ def main():
 
     sh = SentinelHubManager(config)
     for idx, row in df.iterrows():
-        print(f"--- Processing {idx} out of {len(row_ids) - 1} items ---")
-        target_date = f"{int(row['year'])}-{int(row['month'])}-{int(row['day'])}"
-        sh.get_and_save_image(
-            row["decimalLatitude"],
-            row["decimalLongitude"],
-            target_date,
-            row["sentinel_image"],
-        )
-        cb = CrypticImageManager(row)
-        cb.get_and_save_image()
-
+        # Check if File exists here and skip.
+        if os.path.exists(row["crypticbio_image"]):
+            continue
+        print(f"--- Processing {row['id']}, {idx} out of {len(row_ids) - 1} items ---")
+        print(f"--- {row['scientificName']} ---")
+        try:
+            target_date = f"{int(row['year'])}-{int(row['month'])}-{int(row['day'])}"
+            flag, image_path = sh.get_and_save_image(
+                row["decimalLatitude"],
+                row["decimalLongitude"],
+                target_date,
+                row["sentinel_image"],
+            )
+            if flag is False:
+                with open("bad_rows.txt", "a") as f:
+                    f.write(f"{row['id']}\n")
+                continue
+            
+            cb = CrypticImageManager(row)
+            flag_2 = cb.get_and_save_image()
+            if flag_2 is False:
+                if image_path and os.path.exists(image_path):
+                    os.remove(image_path)
+                with open("bad_rows.txt", "a") as f:
+                    f.write(f"{row['id']}\n")
+                continue
+        except Exception as e:
+            print(f"Error at ID {row['id']}: {e}")
+            with open("bad_rows.txt", "a") as f:
+                f.write(f"{row['id']} - Error: {str(e)}\n")
 
 if __name__ == "__main__":
     load_dotenv(".env")

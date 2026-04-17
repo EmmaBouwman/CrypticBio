@@ -8,6 +8,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import requests
+import os
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -16,6 +17,7 @@ from sentinelhub import (
     BBox,
     DataCollection,
     MimeType,
+    MosaickingOrder,
     SentinelHubRequest,
     bbox_to_dimensions,
 )
@@ -116,12 +118,18 @@ class SentinelHubManager:
         self.evalscript = """
             function setup() {
                 return {
-                    input: [{ bands: ["B02", "B03", "B04"] }],
-                    output: { bands: 3 }
+                    input: [{ bands: ["B02", "B03", "B04", "CLP"] }],
+                    output: [
+                        { id: "default", bands: 3 }, 
+                        { id: "metadata", bands: 1 }
+                    ]
                 };
             }
             function evaluatePixel(sample) {
-                return [sample.B04, sample.B03, sample.B02];
+                return {
+                    default: [sample.B04, sample.B03, sample.B02], 
+                    metadata: [sample.CLP] 
+                };
             }
         """
 
@@ -150,26 +158,53 @@ class SentinelHubManager:
         bbox_size = bbox_to_dimensions(bbox, resolution=self.resolution)
         start_date, end_date = self._get_date_range(date)
 
-        request = SentinelHubRequest(
-            evalscript=self.evalscript,
-            input_data=[
-                SentinelHubRequest.input_data(
-                    data_collection=DataCollection.SENTINEL2_L2A,
-                    time_interval=(start_date, end_date),
-                )
-            ],
-            responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
-            bbox=bbox,
-            size=bbox_size,
-            config=self.config,
-        )
+        for i in range(3):
+            request = SentinelHubRequest(
+                evalscript=self.evalscript,
+                input_data=[
+                    SentinelHubRequest.input_data(
+                        data_collection=DataCollection.SENTINEL2_L2A,
+                        time_interval=(start_date, end_date),
+                        mosaicking_order=MosaickingOrder.LEAST_CC
+                    )
+                ],
+                responses=[
+                    SentinelHubRequest.output_response("default", MimeType.PNG),
+                    SentinelHubRequest.output_response("metadata", MimeType.TIFF)
+                ],
+                bbox=bbox,
+                size=bbox_size,
+                config=self.config,
+            )
 
-        images = self._request_with_retry(request)
+            images = self._request_with_retry(request)
 
-        if images:
-            self._save_to_location(save_path, images[0])
-        else:
-            raise RuntimeError(f"No image found for {lat}, {lon}")
+            if images:
+                data = images[0]["default.png"]
+                cloud = images[0]["metadata.tif"]
+                cloud_score = int((np.mean(cloud) / 255) * 100)
+                
+                if cloud_score < 75: # 25% cloud
+                    date = datetime.strptime(date, "%Y-%m-%d")
+                    date = date.replace(year=date.year - 1)
+                    date = date.strftime("%Y-%m-%d")
+                    start_date, end_date = self._get_date_range(date)
+                    continue
+
+                base_name, extension = os.path.splitext(save_path)
+                save_path = f"{base_name}_{cloud_score}{extension}"
+
+                self._save_to_location(save_path, data)
+                print(f"Success: Image found for year {date}")
+                return True, save_path
+            else:
+                print(f"Too cloudy or no data for {date}. Trying previous year...")
+                date = datetime.strptime(date, "%Y-%m-%d")
+                date = date.replace(year=date.year - 1)
+                date = date.strftime("%Y-%m-%d")
+                start_date, end_date = self._get_date_range(date)
+
+        return False, ""
 
     def _request_with_retry(self, request):
         for i in range(self.attempts):
@@ -190,7 +225,8 @@ class SentinelHubManager:
 
     def _save_to_location(self, path, image_array):
         try:
-            img = Image.fromarray(image_array.astype(np.uint8))
+            brigher_image = np.clip(image_array*2.5, 0, 255)
+            img = Image.fromarray(brigher_image.astype(np.uint8))
             img.save(path)
         except FileNotFoundError:
             raise FileNotFoundError(f"Directory does not exist for path: {path}. ")
