@@ -19,6 +19,8 @@ dependencies = [
     "sentinelhub>=3.11.5",
     "torch>=2.8.0",
     "torchvision>=0.23.0",
+    "pathlib>=1.0.1",
+    "pillow>=11.3.0",
 ]
 
 [dependency-groups]
