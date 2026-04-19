@@ -36,4 +36,13 @@ class CrypticBioDataset(Dataset):
             "cb": cb_path,
             "sh": sh_path
         }
+    
       
+if __name__ == "__main__":
+    dataset = CrypticBioDataset(db_path)
+
+    print("dataset size:", len(dataset))
+    print("sample:", dataset[0])
+
+
+    
