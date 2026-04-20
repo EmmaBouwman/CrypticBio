@@ -23,6 +23,7 @@ dependencies = [
     "pillow>=11.3.0",
     "timm>=1.0.26",
     "tqdm>=4.67.3",
+    "scikit-learn>=1.6.1",
 ]
 
 [dependency-groups]
