@@ -210,6 +210,8 @@ class SentinelHubManager:
         for i in range(self.attempts):
             try:
                 return request.get_data()
+            except HTTPError as e:
+                raise e
             except DownloadFailedException as e:
                 response = getattr(e.request_exception, "response", None)
                 status_code = getattr(response, "status_code", None)

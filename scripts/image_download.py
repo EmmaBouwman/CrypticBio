@@ -14,7 +14,6 @@ from src.data_gather import (
     check_exists_dir,
 )
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="Fetch crypticbio rows based on cluster CSV."
@@ -44,8 +43,15 @@ def main():
         ).df()
 
     sh = SentinelHubManager(config)
+    
+    bad_ids = set()
+    if os.path.exists("bad_rows.txt"):
+        with open("bad_rows.txt", "r") as f:
+            bad_ids = {line.split()[0] for line in f if line.strip()}
+    
     for idx, row in df.iterrows():
-        # Check if File exists here and skip.
+        if str(row['id']) in bad_ids:
+            continue
         if os.path.exists(row["crypticbio_image"]):
             continue
         print(f"--- Processing {row['id']}, {idx} out of {len(row_ids) - 1} items ---")
@@ -61,6 +67,7 @@ def main():
             if flag is False:
                 with open("bad_rows.txt", "a") as f:
                     f.write(f"{row['id']}\n")
+                bad_ids.add(str(row['id']))
                 continue
             
             cb = CrypticImageManager(row)
@@ -70,11 +77,13 @@ def main():
                     os.remove(image_path)
                 with open("bad_rows.txt", "a") as f:
                     f.write(f"{row['id']}\n")
+                bad_ids.add(str(row['id'])) 
                 continue
         except Exception as e:
             print(f"Error at ID {row['id']}: {e}")
             with open("bad_rows.txt", "a") as f:
                 f.write(f"{row['id']} - Error: {str(e)}\n")
+            bad_ids.add(str(row['id']))
 
 if __name__ == "__main__":
     load_dotenv(".env")
