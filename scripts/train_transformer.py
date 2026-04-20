@@ -1,8 +1,18 @@
 import os 
+import torch
+
 from dotenv import load_dotenv
 from torch.optim import AdamW
 from torch.nn import CrossEntropyLoss
-from src.model_transformer import BirdSatClassifier, BirdSateliteDataset, data_transforms, train_epoch, bs_check
+from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
+from src.model_transformer import BirdSatClassifier, BirdSateliteDataset, data_transforms, train_epoch, bs_check, Transform
+from src.data_gather import DuckDBManager
+from pathlib import Path
+
+
+torch.cuda.empty_cache()
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 load_dotenv()
 
@@ -10,34 +20,71 @@ base_path = Path(os.getenv("DATA_FOLDER"))
 db_path = base_path / os.getenv("DATABASE")
 cb_folder = base_path / os.getenv("CB_IMAGE_PATH")
 
-all_ids = [os.path.splitext(f)[0] for f in os.listdir(cb_folder) if f.endswith('.png')]
-
-train_ids, temp_ids = train_test_split(all_ids, test_size=0.20, random_state=42)
-val_ids, test_ids = train_test_split(temp_ids, test_size=0.50, random_state=42)
+all_ids = [int(os.path.splitext(f)[0]) for f in os.listdir(cb_folder) if f.endswith('.png')]
 
 with DuckDBManager(db_path) as db:
-    all_species = db.con.execute(
-        "SELECT DISTINCT scientific_name FROM crypticbio ORDER BY scientific_name"
-    ).df()
-    species_list = all_species['scientific_name'].tolist()
+    # 1. Get the species that meet the count requirement
+    # 2. ALSO get the actual rowids for those species in one go
+    filtered_data = db.con.execute("""
+        WITH valid_species AS (
+            SELECT scientificName
+            FROM crypticbio 
+            WHERE rowid = ANY(?) 
+            GROUP BY scientificName
+            HAVING COUNT(*) >= 50
+        )
+        SELECT rowid, scientificName 
+        FROM crypticbio 
+        WHERE scientificName IN (SELECT scientificName FROM valid_species)
+        AND rowid = ANY(?)
+    """, [all_ids, all_ids]).df()
 
-self.name_to_id = {}
-self.id_to_name = {}
+# Update your lists based on the filtered dataframe
+species_list = filtered_data['scientificName'].unique().tolist()
+valid_ids = filtered_data['rowid'].tolist()
+
+print(f"Found {len(species_list)} number of labels")
+name_to_id = {}
+id_to_name = {}
 for idx, name in enumerate(species_list):
-    self.name_to_id[name] = idx
-    self.id_to_name[idx] = name
+    name_to_id[name] = idx
+    id_to_name[idx] = name
+print("Finished label transformation to int")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_classes = len(species_list)
 model = BirdSatClassifier(num_classes=num_classes).to(device)
+print("Created the model")
 
-train_ds = BirdSateliteDataset(train_ids, name_to_id, transform=data_transforms['train'])
-val_ds = BirdSateliteDataset(val_ids, name_to_id, transform=data_transforms['val'])
-test_ds = BirdSateliteDataset(test_ids, name_to_id, transform=data_transforms['test'])
+dataset = BirdSateliteDataset(valid_ids, name_to_id, db_path)
+print(f"Created the dataset with following dimension {dataset.data.shape}")
 
-train_loader = DataLoader(train_ds, batch_size=16, shuffle=True, num_workers=4, pin_memory=True)
-val_loader = DataLoader(val_ds, batch_size=16, shuffle=False, num_workers=4, pin_memory=True)
-test_loader = DataLoader(test_ds, batch_size=16, shuffle=False, num_workers=4, pin_memory=True)
+labels = dataset.data['scientificName'].values
+train_idx, temp_idx = train_test_split(
+    range(len(dataset)),
+    test_size=0.2,
+    stratify=labels,
+    random_state=42
+)
+
+temp_labels = labels[temp_idx]
+val_idx, test_idx = train_test_split(
+    temp_idx,
+    test_size=0.5,
+    stratify=temp_labels,   
+    random_state=42
+)
+print("Created indexes")
+
+train_sub = torch.utils.data.Subset(dataset, train_idx)
+val_sub = torch.utils.data.Subset(dataset, val_idx)
+test_sub = torch.utils.data.Subset(dataset, test_idx)
+print("Created subsets")
+
+train_ds = Transform(train_sub, transform=data_transforms['train'])
+val_ds = Transform(val_sub, transform=data_transforms['val'])
+test_ds = Transform(test_sub, transform=data_transforms['test'])
+print("Transformed the data")
 
 optimizer = torch.optim.AdamW([
     {'params': model.bird_backbone.parameters(), 'lr': 1e-5},
@@ -46,8 +93,26 @@ optimizer = torch.optim.AdamW([
     {'params': model.classifier.parameters(), 'lr': 1e-4},
 ], weight_decay=0.01)
 
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+criterion = CrossEntropyLoss(label_smoothing=0.1)
+print("Optimizer and Criterion ready")
 
+batch_size = 4
+
+train_loader = DataLoader(
+    train_ds, 
+    batch_size=batch_size, 
+    shuffle=True, 
+    num_workers=4,
+    pin_memory=True
+)
+
+val_loader = DataLoader(
+    val_ds, 
+    batch_size=batch_size, 
+    shuffle=False, 
+    num_workers=4,
+    pin_memory=True
+)
 
 num_epochs = 20
 best_val_acc = 0.0
@@ -73,6 +138,12 @@ for epoch in range(num_epochs):
 
 checkpoint = torch.load("best_bird_sat_model.pth")
 model.load_state_dict(checkpoint['model_state_dict'])
+
+test_loader = DataLoader(
+    test_ds, 
+    batch_size=batch_size, 
+    shuffle=False
+)
 
 test_loss, test_acc = validate(model, test_loader, criterion, device)
 print(f"\n🚀 Final Test Accuracy: {test_acc:.2f}%")
