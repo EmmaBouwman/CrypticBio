@@ -5,10 +5,9 @@ import timm
 
 from tqdm import tqdm
 from src.data_gather import DuckDBManager
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
-from sklearn.model_selection import train_test_split
 
 data_transforms = {
     'train': transforms.Compose([
@@ -30,9 +29,23 @@ data_transforms = {
     ])
 }
 
-class BirdSateliteDataset(Dataset):
-    def __init__(self, row_ids, name_to_id, transform=None):
+class Transform(Dataset):
+    def __init__(self, subset, transform=None):
+        self.subset = subset
         self.transform = transform
+
+    def __len__(self):
+        return len(self.subset)
+        
+    def __getitem__(self, index):
+        bird_img, sat_img, label = self.subset[index]
+        if self.transform:
+            bird_img = self.transform(bird_img)
+            sat_img = self.transform(sat_img)
+        return bird_img, sat_img, label
+
+class BirdSateliteDataset(Dataset):
+    def __init__(self, row_ids, name_to_id, db_path):
         self.name_to_id = name_to_id
 
         with DuckDBManager(db_path) as db:
@@ -53,14 +66,10 @@ class BirdSateliteDataset(Dataset):
 
         label = self.name_to_id[row['scientificName']]
 
-        if self.transform:
-            bird_img = self.transform(bird_img)
-            sat_img = self.transform(sat_img)
-
         return bird_img, sat_img, torch.tensor(label, dtype=torch.long)
 
 class BirdSatClassifier(nn.Module):
-    def __init__(self, num_classes, model_name='vit_base_patch16_224'):
+    def __init__(self, num_classes, model_name='vit_tiny_patch16_224'):
         super().__init__()
         
         # 1. Backbones for feature extraction
