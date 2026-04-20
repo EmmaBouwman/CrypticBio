@@ -25,12 +25,3 @@ class EarlyFusionModel(nn.Module):
         fused = torch.cat([cb_feat, sh_feat], dim=1)
         return self.classifier(fused)
     
-
-model = EarlyFusionModel(num_classes=10)
-
-cb = torch.randn(4, 3, 224, 224)
-sh = torch.randn(4, 3, 224, 224)
-
-out = model(cb, sh)
-
-print(out.shape)
