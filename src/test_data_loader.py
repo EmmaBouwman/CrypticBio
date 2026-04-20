@@ -20,7 +20,7 @@ class CrypticBioDataset(Dataset):
 
         with self.manager as db:
             self.data = db.con.execute("""
-                SELECT id, crypticbio_image, sentinel_image
+                SELECT id, crypticbio_image, sentinel_image, scientific_name
                 FROM crypticbio
                 ORDER BY RANDOM()
             """).fetchall()
