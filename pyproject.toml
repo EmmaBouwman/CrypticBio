@@ -21,6 +21,8 @@ dependencies = [
     "torchvision>=0.23.0",
     "pathlib>=1.0.1",
     "pillow>=11.3.0",
+    "timm>=1.0.26",
+    "tqdm>=4.67.3",
 ]
 
 [dependency-groups]
