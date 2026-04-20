@@ -22,6 +22,7 @@ from sentinelhub import (
     bbox_to_dimensions,
 )
 from sentinelhub.exceptions import DownloadFailedException
+from requests.exceptions import HTTPError
 
 
 class DuckDBManager:
@@ -152,7 +153,7 @@ class SentinelHubManager:
 
         return start, end
 
-    def get_and_save_image(self, lat, lon, date, save_path):
+    def get_and_save_image(self, lat, lon, date, save_path, db_path):
         bbox_coords = self._get_bounding_box(lat, lon)
         bbox = BBox(bbox=bbox_coords, crs=CRS.WGS84)
         bbox_size = bbox_to_dimensions(bbox, resolution=self.resolution)
@@ -195,7 +196,15 @@ class SentinelHubManager:
                 save_path = f"{base_name}_{cloud_score}{extension}"
 
                 self._save_to_location(save_path, data)
+                with DuckDBManager(db_path) as db:
+                    db.con.execute("""
+                        UPDATE crypticbio 
+                        SET sentinel_image = ?
+                        WHERE id = ?
+                    """, [save_path, int(base_name.split("/")[-1])])
+
                 print(f"Success: Image found for year {date}")
+                
                 return True, save_path
             else:
                 print(f"Too cloudy or no data for {date}. Trying previous year...")
@@ -210,17 +219,18 @@ class SentinelHubManager:
         for i in range(self.attempts):
             try:
                 return request.get_data()
-            except HTTPError as e:
-                raise e
-            except DownloadFailedException as e:
-                response = getattr(e.request_exception, "response", None)
-                status_code = getattr(response, "status_code", None)
+            except (DownloadFailedException, HTTPError) as e:
+                if isinstance(e, DownloadFailedException):
+                    response = getattr(e.request_exception, "response", None)
+                    status_code = getattr(response, "status_code", None)
 
-                if status_code == 429:
-                    print(f"Rate limit hit. Retrying in {(2**i) * 10}s...")
-                    time.sleep((2**i) * 10)
-                    continue
-                raise e
+                    if status_code == 429:
+                        print(f"Rate limit hit. Retrying in {(2**i) * 10}s...")
+                        time.sleep((2**i) * 10)
+                        continue
+                    raise e
+                else:
+                    raise e
         warnings.warn(
             f"Failed to download image after {self.attempts} attempts.", RuntimeWarning
         )

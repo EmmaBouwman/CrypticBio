@@ -63,6 +63,7 @@ def main():
                 row["decimalLongitude"],
                 target_date,
                 row["sentinel_image"],
+                db_path
             )
             if flag is False:
                 with open("bad_rows.txt", "a") as f:
