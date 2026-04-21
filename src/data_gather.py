@@ -27,13 +27,14 @@ from requests.exceptions import HTTPError
 
 class DuckDBManager:
     # Always be used with "with DuckDBManager(<path>) as db:"
-    def __init__(self, db_path: Path, table_name: str = "crypticbio"):
+    def __init__(self, db_path: Path, table_name: str = "crypticbio", readOnly: flag = True):
         self.db_path = db_path
         self.table_name = table_name
         self.con = None
+        self.readOnly = readOnly
 
     def __enter__(self):
-        self.con = duckdb.connect(self.db_path)
+        self.con = duckdb.connect(self.db_path, read_only=self.readOnly)
         return self
 
     def __exit__(self, _type, _value, _traceback):
@@ -193,19 +194,19 @@ class SentinelHubManager:
                     continue
 
                 base_name, extension = os.path.splitext(save_path)
-                save_path = f"{base_name}_{cloud_score}{extension}"
+                final_save_path = f"{base_name}_{cloud_score}{extension}"
 
-                self._save_to_location(save_path, data)
-                with DuckDBManager(db_path) as db:
+                self._save_to_location(final_save_path, data)
+                with DuckDBManager(db_path, readOnly=False) as db:
                     db.con.execute("""
                         UPDATE crypticbio 
                         SET sentinel_image = ?
                         WHERE id = ?
-                    """, [save_path, int(base_name.split("/")[-1])])
+                    """, [final_save_path, int(base_name.split("/")[-1])])
 
                 print(f"Success: Image found for year {date}")
                 
-                return True, save_path
+                return True, final_save_path
             else:
                 print(f"Too cloudy or no data for {date}. Trying previous year...")
                 date = datetime.strptime(date, "%Y-%m-%d")
