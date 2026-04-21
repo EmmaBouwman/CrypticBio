@@ -10,10 +10,6 @@ from src.model_transformer import BirdSatClassifier, BirdSateliteDataset, data_t
 from src.data_gather import DuckDBManager
 from pathlib import Path
 
-
-torch.cuda.empty_cache()
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
 load_dotenv()
 
 base_path = Path(os.getenv("DATA_FOLDER"))
@@ -96,7 +92,7 @@ optimizer = torch.optim.AdamW([
 criterion = CrossEntropyLoss(label_smoothing=0.1)
 print("Optimizer and Criterion ready")
 
-batch_size = 4
+batch_size = 32
 
 train_loader = DataLoader(
     train_ds, 
@@ -145,5 +141,5 @@ test_loader = DataLoader(
     shuffle=False
 )
 
-test_loss, test_acc = validate(model, test_loader, criterion, device)
+test_loss, test_acc = bs_check(model, test_loader, criterion, device)
 print(f"\n🚀 Final Test Accuracy: {test_acc:.2f}%")
