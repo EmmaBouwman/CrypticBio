@@ -24,13 +24,14 @@ from sentinelhub.exceptions import DownloadFailedException
 
 class DuckDBManager:
     # Always be used with "with DuckDBManager(<path>) as db:"
-    def __init__(self, db_path: Path, table_name: str = "crypticbio"):
+    def __init__(self, db_path: Path, table_name: str = "crypticbio", read_only: bool = False):
         self.db_path = db_path
         self.table_name = table_name
+        self.read_only = read_only
         self.con = None
 
     def __enter__(self):
-        self.con = duckdb.connect(self.db_path)
+        self.con = duckdb.connect(str(self.db_path), read_only=self.read_only)
         return self
 
     def __exit__(self, _type, _value, _traceback):
