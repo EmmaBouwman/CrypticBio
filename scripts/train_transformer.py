@@ -73,37 +73,37 @@ def main():
     train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels, random_state=42)
     val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=labels[temp_idx], random_state=42)
 
-    # train_ds = Transform(torch.utils.data.Subset(dataset, train_idx), transform=data_transforms['train'])
-    # val_ds = Transform(torch.utils.data.Subset(dataset, val_idx), transform=data_transforms['val'])
+    train_ds = Transform(torch.utils.data.Subset(dataset, train_idx), transform=data_transforms['train'])
+    val_ds = Transform(torch.utils.data.Subset(dataset, val_idx), transform=data_transforms['val'])
     test_ds = Transform(torch.utils.data.Subset(dataset, test_idx), transform=data_transforms['test'])
 
-    # train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
-    # val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
-    # optimizer = torch.optim.AdamW([
-    #     {'params': model.bird_backbone.parameters(), 'lr': args.lr_backbone},
-    #     {'params': model.sat_backbone.parameters(), 'lr': args.lr_backbone},
-    #     {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
-    #     {'params': model.classifier.parameters(), 'lr': args.lr_head},
-    # ], weight_decay=0.01)
+    optimizer = torch.optim.AdamW([
+        {'params': model.bird_backbone.parameters(), 'lr': args.lr_backbone},
+        {'params': model.sat_backbone.parameters(), 'lr': args.lr_backbone},
+        {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
+        {'params': model.classifier.parameters(), 'lr': args.lr_head},
+    ], weight_decay=0.01)
 
     criterion = CrossEntropyLoss(label_smoothing=0.1)
 
-    # best_val_acc = 0.0
-    # for epoch in range(args.epochs):
-    #     print(f"\nEpoch {epoch+1}/{args.epochs}")
-    #     train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
-    #     val_loss, val_acc = bs_check(model, val_loader, criterion, device)
+    best_val_acc = 0.0
+    for epoch in range(args.epochs):
+        print(f"\nEpoch {epoch+1}/{args.epochs}")
+        train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
+        val_loss, val_acc = bs_check(model, val_loader, criterion, device)
         
-    #     print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
+        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
         
-    #     if val_acc > best_val_acc:
-    #         best_val_acc = val_acc
-    #         torch.save({
-    #             'model_state_dict': model.state_dict(),
-    #             'species_map': id_to_name
-    #         }, args.save_name)
-    #         print(f"New best model saved to {args.save_name}")
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'species_map': id_to_name
+            }, args.save_name)
+            print(f"New best model saved to {args.save_name}")
 
     checkpoint = torch.load(args.save_name)
     model.load_state_dict(checkpoint['model_state_dict'])
