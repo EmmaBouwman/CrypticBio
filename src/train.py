@@ -48,7 +48,7 @@ loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
 
 
 #main training loop
-if __name__=="_main_":
+if __name__=="__main__":
 
     model = EarlyFusionModel(num_classes=len(name_to_id))
     criterion = nn.CrossEntropyLoss()
