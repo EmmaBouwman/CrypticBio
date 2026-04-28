@@ -15,7 +15,7 @@ def parse_args():
     # Training Hyperparameters
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training")
     parser.add_argument("--epochs", type=int, default=20, help="Number of epochs to train")
-    parser.add_argument("--lr_backbone", type=float, default=1e-5, help="Learning rate for ViT backbones")
+    parser.add_argument("--lr_backbone", type=float, default=1e-6, help="Learning rate for ViT backbones")
     parser.add_argument("--lr_head", type=float, default=1e-4, help="Learning rate for attention and classifier")
     parser.add_argument("--min_samples", type=int, default=50, help="Minimum samples per species to include")
     
@@ -56,7 +56,7 @@ def main():
             AND rowid = ANY(?)
         """, [all_ids, args.min_samples, all_ids]).df()
 
-    species_list = filtered_data['scientificName'].unique().tolist()
+    species_list = sorted(filtered_data['scientificName'].unique().tolist())
     valid_ids = filtered_data['rowid'].tolist()
 
     name_to_id = {name: idx for idx, name in enumerate(species_list)}
@@ -64,7 +64,7 @@ def main():
     num_classes = len(species_list)
     print(f"Dataset ready: {len(valid_ids)} samples across {num_classes} classes.")
 
-    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = BirdSatClassifier(num_classes=num_classes, model_name=args.model_name).to(device)
 
     dataset = BirdSateliteDataset(valid_ids, name_to_id, db_path)
@@ -81,33 +81,68 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
     optimizer = torch.optim.AdamW([
-        {'params': model.bird_backbone.parameters(), 'lr': args.lr_backbone},
-        {'params': model.sat_backbone.parameters(), 'lr': args.lr_backbone},
         {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
         {'params': model.classifier.parameters(), 'lr': args.lr_head},
     ], weight_decay=0.01)
 
     criterion = CrossEntropyLoss(label_smoothing=0.1)
 
+    patience = 5  # Stop if no improvement for 5 epochs
+    epochs_no_improve = 0
+    best_val_loss = float('inf') # We usually monitor loss for early stopping
+    early_stop = False
+
     best_val_acc = 0.0
     for epoch in range(args.epochs):
+        if early_stop:
+            print("Stopping early due to lack of improvement.")
+            break
+
         print(f"\nEpoch {epoch+1}/{args.epochs}")
+
+        if epoch == 5:
+            for param in model.bird_backbone.parameters():
+                param.requires_grad = True
+
+            for param in model.sat_backbone.parameters():
+                param.requires_grad = True
+
+            optimizer = torch.optim.AdamW([
+                {'params': model.bird_backbone.parameters(), 'lr': args.lr_backbone}, # Very low LR for fine-tuning
+                {'params': model.sat_backbone.parameters(), 'lr': args.lr_backbone},
+                {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
+                {'params': model.classifier.parameters(), 'lr': args.lr_head},
+            ], weight_decay=0.01)
+
         train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc = bs_check(model, val_loader, criterion, device)
         
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
         
+        # Check for improvement
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement in Val Loss for {epochs_no_improve} epochs.")
+
+        # 2. Save Best Model (based on Accuracy)
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'species_map': id_to_name
             }, args.save_name)
-            print(f"New best model saved to {args.save_name}")
+            print(f"New best accuracy! Model saved to {args.save_name}")
+
+        # 3. Trigger Early Stop
+        if epochs_no_improve >= patience and epoch >= 5:
+            early_stop = True
 
     checkpoint = torch.load(args.save_name)
     model.load_state_dict(checkpoint['model_state_dict'])
-    test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     _, test_acc = bs_check(model, test_loader, criterion, device)
     print(f"\n🚀 Final Test Accuracy: {test_acc:.2f}%")
 
