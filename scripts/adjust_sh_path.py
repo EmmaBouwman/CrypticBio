@@ -28,7 +28,7 @@ for f in os.listdir(sh_folder):
 df_updates = pd.DataFrame(data_for_df)
 
 # 4. Perform Bulk Update with DuckDB
-with DuckDBManager(db_path) as db:
+with DuckDBManager(db_path, readOnly=False) as db:
     if df_updates.empty:
         print("No valid files found to update.")
     else:

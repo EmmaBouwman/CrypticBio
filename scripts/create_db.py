@@ -22,6 +22,6 @@ check_exists_dir(parquet_path)
 download_parquests(parquet_path)
 downloaded_parquets_path = base_path / os.getenv("PARQUETS_PATH")
 
-with DuckDBManager(db_path) as db:
+with DuckDBManager(db_path, readOnly=False) as db:
     db.create_db(downloaded_parquets_path)
     db.extend_db(cb_folder, sh_folder, False)
