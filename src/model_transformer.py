@@ -15,17 +15,17 @@ data_transforms = {
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(15), 
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ]),
     'val': transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ]),
     'test': transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
 }
 
@@ -69,13 +69,19 @@ class BirdSateliteDataset(Dataset):
         return bird_img, sat_img, torch.tensor(label, dtype=torch.long)
 
 class BirdSatClassifier(nn.Module):
-    def __init__(self, num_classes, model_name='vit_tiny_patch16_224'):
+    def __init__(self, num_classes, model_name='vit_tiny_patch16_224', freeze_backbone=True):
         super().__init__()
         
         # 1. Backbones for feature extraction
         self.bird_backbone = timm.create_model(model_name, pretrained=True, num_classes=0)
         self.sat_backbone = timm.create_model(model_name, pretrained=True, num_classes=0)
         
+        if freeze_backbone:
+            for param in self.bird_backbone.parameters():
+                param.requires_grad = False
+            for param in self.sat_backbone.parameters():
+                param.requires_grad = False
+
         embed_dim = self.bird_backbone.num_features
 
         # 2. Cross-Attention: Bird patches query the Satellite features
