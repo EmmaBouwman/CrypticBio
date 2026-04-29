@@ -17,6 +17,7 @@ db_path = base_folder / os.getenv("DATABASE")
 cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
 sh_folder = base_folder / os.getenv("SH_IMAGE_PATH")
 
+print('test')
 
 #IDs from CB folder
 ids= [

@@ -1,50 +1,75 @@
+from dotenv import load_dotenv
+import os
 import torch
 import torch.nn as nn
-import timm
+from pathlib import Path
+from early_fusion import EarlyFusionModel
+from src.data_gather import DuckDBManager
+from multimodal_dataset import CrypticBioDataset
+from torch.utils.data import DataLoader
 
 
-class EarlyFusionModel(nn.Module):
-    def __init__(
-        self,
-        num_classes,
-        bird_model_name='convnext_base',
-        sat_model_name='efficientnet_b4'
-    ):
-        super().__init__()
+def main():
+    print("start")
 
-        # Backbones
-        self.cb_backbone = timm.create_model(
-            bird_model_name, pretrained=True, num_classes=0
-        )
+    load_dotenv()
 
-        self.sh_backbone = timm.create_model(
-            sat_model_name, pretrained=True, num_classes=0
-        )
+    # folders
+    base_folder = Path(os.getenv("DATA_FOLDER"))
+    db_path = base_folder / os.getenv("DATABASE")
+    cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
+    sh_folder = base_folder / os.getenv("SH_IMAGE_PATH")
 
-        # Feature dims
-        cb_dim = self.cb_backbone.num_features
-        sh_dim = self.sh_backbone.num_features
+    ids = [
+        os.path.splitext(f)[0]
+        for f in os.listdir(cb_folder)
+        if f.endswith(".png")
+    ]
 
-        # Project to same size
-        common_dim = 512
-        self.cb_proj = nn.Linear(cb_dim, common_dim)
-        self.sh_proj = nn.Linear(sh_dim, common_dim)
+    with DuckDBManager(db_path, read_only=True) as db:
+        species = db.con.execute("""
+            SELECT DISTINCT scientificName FROM crypticbio
+        """).df()["scientificName"].tolist()
 
-        # Classifier
-        self.classifier = nn.Sequential(
-            nn.Linear(common_dim * 2, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, num_classes)
-        )
+    name_to_id = {name: i for i, name in enumerate(species)}
 
-    def forward(self, cb_images, sh_images):
-        cb_features = self.cb_backbone(cb_images)
-        sh_features = self.sh_backbone(sh_images)
+    print("before dataset")
 
-        cb_features = self.cb_proj(cb_features)
-        sh_features = self.sh_proj(sh_features)
+    dataset = CrypticBioDataset(
+        ids=ids,
+        name_to_id=name_to_id,
+        cb_folder=cb_folder,
+        sh_folder=sh_folder
+    )
 
-        fused = torch.cat((cb_features, sh_features), dim=1)
+    print("after dataset")
 
-        return self.classifier(fused)
+    loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = EarlyFusionModel(num_classes=len(name_to_id)).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    print("dataset size:", len(dataset))
+    print("starting training loop")
+
+    for cb, sh, labels in loader:
+        cb, sh, labels = cb.to(device), sh.to(device), labels.to(device)
+
+        print("batch loaded")
+        out = model(cb, sh)
+
+        loss = criterion(out, labels)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        print("loss:", loss.item())
+        break
+
+
+if __name__ == "__main__":
+    main()
