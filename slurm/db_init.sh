@@ -2,7 +2,7 @@
 #SBATCH --job-name=create_db
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
-#SBATCH --mail-type="ALL"
+#SBATCH --mail-type="END"
 #SBATCH --mem=32G
 #SBATCH --time=4:00:00
 #SBATCH --partition=cpu-short
