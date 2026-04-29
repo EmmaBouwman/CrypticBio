@@ -20,5 +20,5 @@ echo "Synced uv"
 
 # Run the python script
 echo "Starting to run the model"
-uv run train.py
+uv run src/train.py
 echo "Succesfully ran the model"

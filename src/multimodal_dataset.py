@@ -8,17 +8,14 @@ from src.data_gather import DuckDBManager
 from torch.utils.data import Dataset, DataLoader
 from dotenv import load_dotenv
 
+# load_dotenv()
 
-load_dotenv(".env")
-
-
-base_folder = Path(os.getenv("DATA_FOLDER"))
-db_path = base_folder / os.getenv("DATABASE")
-cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
-
+# base_folder = Path(os.getenv("DATA_FOLDER"))
+# db_path = base_folder / os.getenv("DATABASE")
+# cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
 
 class CrypticBioDataset(Dataset):
-    def __init__(self, ids, name_to_id, cb_folder, sh_folder, limit=None):
+    def __init__(self, ids, name_to_id, cb_folder, sh_folder, db_path, limit=None):
         self.ids = ids[:limit] if limit else ids
         self.name_to_id = name_to_id
 

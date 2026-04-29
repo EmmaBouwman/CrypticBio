@@ -40,7 +40,8 @@ dataset = CrypticBioDataset(
     ids=ids,
     name_to_id=name_to_id,
     cb_folder=cb_folder,
-    sh_folder=sh_folder
+    sh_folder=sh_folder,
+    db_path=db_path
 )
 print("after dataset")
 
