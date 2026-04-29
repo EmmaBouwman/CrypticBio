@@ -3,8 +3,8 @@
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
-#SBATCH --mem=96G
-#SBATCH --time=7-00:00:00
+#SBATCH --mem=64G
+#SBATCH --time=3-00:00:00
 #SBATCH --partition=gpu-2080ti-11g 
 #SBATCH --gres=gpu:2080_ti:1
 #SBATCH --ntasks=1
@@ -13,32 +13,29 @@
 
 mkdir -p logs
 
-module purges
+module purge
 
 module load ALICE/default
 module load slurm
 module load CUDA/12.3.2
 module load uv
 
-echo "## Available CUDA devices: $CUDA_VISIBLE_DEVICES"
-
-echo "## Checking status of CUDA device with nvidia-smi"
 nvidia-smi
 
 # Syncing the uv environment
 echo "Starting to sync uv"
 uv sync
-echo "Synced uv"
 
 echo "Starting job for vit_tiny_patch16_224"
 
 # Run the script with your requested parameters
 uv run scripts/train_transformer.py \
-    --batch_size 32 \
+    --batch_size 64 \
     --num_workers 8 \
     --epochs 100 \
-    --model_name "vit_small_patch16_224" \
-    --save_name "best_animal_sat_small_resized.pth" \
+    --model_name "vit_tiny_patch16_224" \
+    --save_name "best_sat_tiny_resized.pth" \
     --lr_head 2e-4 \
     --lr_backbone 2e-6 \
-    --transform_size 224
+    --transform_size 224 \
+    --model_type 2
