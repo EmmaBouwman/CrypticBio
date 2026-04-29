@@ -124,7 +124,10 @@ class AnimalSatClassifier(nn.Module):
         # 2. Cross-Attention: animal patches query the Satellite features
         self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads=8, batch_first=True)
 
-        # 3. Final Classification Head
+        # Add a LayerNorm for the combined features (1536 dim)
+        self.norm = nn.LayerNorm(embed_dim * 2)
+
+        # 4. Final Classification Head
         # Concatenates: [animal tokens] + [Satelite with animal tokens]
         self.classifier = nn.Linear(embed_dim * 2, num_classes)
 
@@ -148,6 +151,9 @@ class AnimalSatClassifier(nn.Module):
 
         # Combine animal and sat with animal queries
         combined = torch.cat([animal_full, sat_adjusted], dim=-1) # [Batch, 1536]
+
+        # Apply Layernorm before classification
+        combined = self.norm(combined)
 
         # Final Scientific label Prediction
         return self.classifier(combined)
