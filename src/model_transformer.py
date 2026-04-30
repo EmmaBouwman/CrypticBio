@@ -10,10 +10,10 @@ from torchvision import transforms
 from PIL import Image
 from enum import Enum
 
-def get_transforms(transform_size):
+def get_transforms(transform_size, normalize):
     common_post_transforms = [
         transforms.ToTensor(),
-        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        transforms.Normalize(normalize)
     ]
 
     resize_transform = [transforms.Resize((224, 224))] if transform_size == -1 else []

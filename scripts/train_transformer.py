@@ -91,7 +91,8 @@ def main():
     train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels, random_state=42)
     val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=labels[temp_idx], random_state=42)
 
-    data_transforms = get_transforms(args.transform_size)
+    if model_type == ModelType.Animal or model_type == ModelType.Satelite or model_type == ModelType.Both:
+        data_transforms = get_transforms(args.transform_size, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 
     if model_type == ModelType.Both:
         model = AnimalSatClassifier(num_classes=num_classes, model_name=args.model_name).to(device)
@@ -104,7 +105,6 @@ def main():
             {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
             {'params': model.classifier.parameters(), 'lr': args.lr_head},
         ], weight_decay=0.01)
-
     else:
         model = SingleModalityClassifier(num_classes=num_classes, model_name=args.model_name).to(device)
         if not args.test_only:
