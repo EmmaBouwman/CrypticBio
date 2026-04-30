@@ -26,7 +26,7 @@ class CrypticBioDataset(Dataset):
         self.sh_folder = Path(sh_folder)
 
 
-        with DuckDBManager(db_path, read_only=True) as db:
+        with DuckDBManager(db_path) as db:
             df = db.con.execute("""
                 SELECT id, scientificName
                 FROM crypticbio

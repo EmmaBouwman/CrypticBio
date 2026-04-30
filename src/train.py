@@ -26,7 +26,7 @@ ids= [
     ]
 
 #define name_to_id
-with DuckDBManager(db_path, read_only=True) as db:
+with DuckDBManager(db_path) as db:
     species = db.con.execute("""
         SELECT DISTINCT scientificName FROM crypticbio
     """).df()["scientificName"].tolist()
