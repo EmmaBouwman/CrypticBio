@@ -8,65 +8,64 @@ from multimodal_dataset import CrypticBioDataset
 from torch.utils.data import DataLoader
 from dotenv import load_dotenv
 
-print("start")
-load_dotenv(".env")
 
-#folders
-base_folder = Path(os.getenv("DATA_FOLDER"))
-db_path = base_folder / os.getenv("DATABASE")
-cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
-sh_folder = base_folder / os.getenv("SH_IMAGE_PATH")
+def main():
+    load_dotenv(".env")
 
+    
+    base_folder = Path(os.getenv("DATA_FOLDER"))
+    db_path = base_folder / os.getenv("DATABASE")
+    cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
+    sh_folder = base_folder / os.getenv("SH_IMAGE_PATH")
 
-#IDs from CB folder
-ids= [
-    os.path.splitext(f)[0]
-    for f in os.listdir(cb_folder)
-    if f.endswith(".png")
-    ]
+    ids = [int(os.path.splitext(f)[0]) for f in os.listdir(cb_folder) if f.endswith(".png")]
 
-#define name_to_id
-with DuckDBManager(db_path) as db:
-    species = db.con.execute("""
-        SELECT DISTINCT scientificName FROM crypticbio
-    """).df()["scientificName"].tolist()
+    with DuckDBManager(db_path) as db:
+        filtered = db.con.execute("""
+            WITH valid AS (
+                SELECT scientificName FROM crypticbio
+                WHERE id = ANY(?) 
+                GROUP BY scientificName HAVING COUNT(*) >= 50
+            )
+            SELECT id, scientificName FROM crypticbio
+            WHERE scientificName IN (SELECT scientificName FROM valid)
+            AND id = ANY(?)
+        """, [ids, ids]).df()
 
-name_to_id = {name: i for i, name in enumerate(species)}
+    valid_ids = filtered["id"].tolist()
+    species = sorted(filtered["scientificName"].unique().tolist())
+    name_to_id = {name: i for i, name in enumerate(species)}
+    print(f"Dataset: {len(valid_ids)} samples, {len(species)} species")
 
-print("before dataset")
-#dataloader
-dataset = CrypticBioDataset(
-    ids=ids,
-    name_to_id=name_to_id,
-    cb_folder=cb_folder,
-    sh_folder=sh_folder
-)
-print("after dataset")
+    dataset = CrypticBioDataset(
+        ids=valid_ids,
+        name_to_id=name_to_id,
+        cb_folder=cb_folder,
+        sh_folder=sh_folder,
+    )
+    loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=4)
 
-loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
-
-
-
-#main training loop
-if __name__=="_main_":
-
+   
     model = EarlyFusionModel(num_classes=len(name_to_id))
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    print("dataset size:", len(dataset))
-    print("starting training loop")
-
-    for cb, sh, labels in loader:
-        print("batch loaded")
-        out = model(cb, sh)
-
-        loss = criterion(out, labels)
-
+    print("\n--- quick check ---")
+    cb_batch, sh_batch, label_batch = next(iter(loader))
+    
+    for step in range(10):
+        out = model(cb_batch, sh_batch)
+        loss = criterion(out, label_batch)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        print(f"  step {step+1:2d} | loss: {loss.item():.4f}")
 
-        print("loss:", loss.item())
-        break 
+    print(f"\nOutput shape:   {out.shape}")
+    print(f"Num classes:    {len(name_to_id)}")
+    print(f"Predictions:    {out.argmax(dim=1).tolist()}")
+    print(f"Labels:         {label_batch.tolist()}")
 
+
+if __name__ == "__main__":
+    main()

@@ -32,11 +32,8 @@ class CrypticBioDataset(Dataset):
                 FROM crypticbio
             """).df()
 
-        # ensure string keys
         self.id_to_label = dict(zip(df["id"].astype(str), df["scientificName"]))
 
-
-        # sentinel lookup
         self.sh_lookup = {}
 
         for f in self.sh_folder.glob("*.png"):
@@ -48,8 +45,8 @@ class CrypticBioDataset(Dataset):
         return len(self.ids)
     
 
-    def _load_image(self, path):
-        img = Image.open(path).convert("RGB")
+    def _load_image(self, path, size=(224,224)):
+        img = Image.open(path).convert("RGB").resize(size, Image.BILINEAR)
         arr = np.array(img)
         return torch.tensor(arr).permute(2, 0, 1).float() / 255.0
     
@@ -58,30 +55,20 @@ class CrypticBioDataset(Dataset):
         _id = str(self.ids[idx])
 
         cb_path = self.cb_folder / f"{_id}.png"
-
         if not cb_path.exists():
             raise FileNotFoundError(f"Missing CB image: {cb_path}")
 
-      
-        # Sentinel image lookup in dict
         sh_path = self.sh_lookup.get(_id)
-
         if sh_path is None:
             raise FileNotFoundError(f"Missing SH image for id {_id}")
 
-        # load images
         cb_img = self._load_image(cb_path)
         sh_img = self._load_image(sh_path)
 
-      
-        # label
         label_name = self.id_to_label.get(_id)
-
         if label_name is None:
             raise ValueError(f"no label for id {_id}")
-        
         label = self.name_to_id[label_name]
-
 
         return cb_img, sh_img, torch.tensor(label)
     

@@ -1,27 +1,36 @@
 import torch
 import torch.nn as nn
-import torchvision.models as models
+import timm
 
 class EarlyFusionModel(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, model_name='vit_base_patch16_224', freeze_backbone=False):
         super().__init__()
 
-        self.cb_encoder = models.resnet18(weights="IMAGENET1K_V1")
-        self.sh_encoder = models.resnet18(weights="IMAGENET1K_V1")
-
-        self.cb_encoder.fc = nn.Identity()
-        self.sh_encoder.fc = nn.Identity()
-
-        self.classifier = nn.Sequential(
-            nn.Linear(512 * 2, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_classes)
+        
+        self.channel_proj = nn.Sequential(
+            nn.Conv2d(6, 3, kernel_size=1, bias=False),
+            nn.BatchNorm2d(3),
+            nn.GELU(),
         )
 
-    def forward(self, cb, sh):
-        cb_feat = self.cb_encoder(cb)
-        sh_feat = self.sh_encoder(sh)
+        self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0)
 
-        fused = torch.cat([cb_feat, sh_feat], dim=1)
-        return self.classifier(fused)
-    
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+
+        embed_dim = self.backbone.num_features 
+
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, num_classes),
+        )
+
+    def forward(self, cb_img, sh_img):
+        x = torch.cat([cb_img, sh_img], dim=1)   
+        x = self.channel_proj(x)                  
+
+        features = self.backbone.forward_features(x)  
+        cls_token = features[:, 0, :]                
+
+        return self.classifier(cls_token)
