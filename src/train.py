@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 from pathlib import Path
 from early_fusion import EarlyFusionModel
 from src.data_gather import DuckDBManager
@@ -10,10 +11,52 @@ from torch.utils.data import DataLoader
 from dotenv import load_dotenv
 
 
+def train_epoch(model, loader, optimizer, criterion, device):
+    model.train()
+    total_loss = 0
+    correct = 0
+    total = 0
+
+    for cb, sh, labels in tqdm(loader, desc="Training"):
+        cb, sh, labels = cb.to(device), sh.to(device), labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(cb, sh)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        _, predicted = outputs.max(1)
+        total += labels.size(0)
+        correct += predicted.eq(labels).sum().item()
+
+    return total_loss / len(loader), 100. * correct / total
+
+
+def evaluate(model, loader, criterion, device):
+    model.eval()
+    total_loss = 0
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for cb, sh, labels in tqdm(loader, desc="Evaluating"):
+            cb, sh, labels = cb.to(device), sh.to(device), labels.to(device)
+            outputs = model(cb, sh)
+            loss = criterion(outputs, labels)
+
+            total_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+
+    return total_loss / len(loader), 100. * correct / total
+
+
 def main():
     load_dotenv(".env")
 
-    
     base_folder = Path(os.getenv("DATA_FOLDER"))
     db_path = base_folder / os.getenv("DATABASE")
     cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
@@ -53,29 +96,24 @@ def main():
     val_ds   = torch.utils.data.Subset(dataset, val_idx)
     test_ds  = torch.utils.data.Subset(dataset, test_idx)
 
-    print(f"Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}")
+    print(f"Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}") 
 
-    model = EarlyFusionModel(num_classes=len(name_to_id))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    model = EarlyFusionModel(num_classes=len(name_to_id)).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_ds, batch_size=16, shuffle=True,  num_workers=4, pin_memory=True)
+    val_loader   = DataLoader(val_ds,   batch_size=16, shuffle=False, num_workers=4, pin_memory=True)
 
-    print("\n--- quick check ---")
-    cb_batch, sh_batch, label_batch = next(iter(loader))
     
-    for step in range(10):
-        out = model(cb_batch, sh_batch)
-        loss = criterion(out, label_batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        print(f"  step {step+1:2d} | loss: {loss.item():.4f}")
+    train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
+    val_loss, val_acc     = evaluate(model, val_loader, criterion, device)
 
-    print(f"\nOutput shape:   {out.shape}")
-    print(f"Num classes:    {len(name_to_id)}")
-    print(f"Predictions:    {out.argmax(dim=1).tolist()}")
-    print(f"Labels:         {label_batch.tolist()}")
+    print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
+    print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
 
 
 if __name__ == "__main__":
