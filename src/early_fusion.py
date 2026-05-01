@@ -3,7 +3,7 @@ import torch.nn as nn
 import timm
 
 class EarlyFusionModel(nn.Module):
-    def __init__(self, num_classes, model_name='vit_base_patch16_224', freeze_backbone=False):
+    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False):
         super().__init__()
 
         
@@ -30,7 +30,5 @@ class EarlyFusionModel(nn.Module):
         x = torch.cat([cb_img, sh_img], dim=1)   
         x = self.channel_proj(x)                  
 
-        features = self.backbone.forward_features(x)  
-        cls_token = features[:, 0, :]                
-
-        return self.classifier(cls_token)
+        features = self.backbone(x)               
+        return self.classifier(features)

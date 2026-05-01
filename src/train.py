@@ -109,12 +109,43 @@ def main():
     val_loader   = DataLoader(val_ds,   batch_size=16, shuffle=False, num_workers=4, pin_memory=True)
 
     
-    train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
-    val_loss, val_acc     = evaluate(model, val_loader, criterion, device)
+    best_val_acc = 0.0
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
+    patience = 5
+    early_stop = False
 
-    print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-    print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+    for epoch in range(20): 
+        if early_stop:
+            print("Early stopping.")
+            break
 
+        print(f"\nEpoch {epoch+1}/20")
+
+        train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
+        val_loss, val_acc     = evaluate(model, val_loader, criterion, device)
+
+        print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
+        print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+
+        
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement for {epochs_no_improve} epoch(s).")
+
+    
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save({
+                'model_state_dict': model.state_dict(),
+            }, "best_early_fusion.pth")
+            print(f"New best val acc: {best_val_acc:.2f}% — model saved.")
+
+        if epochs_no_improve >= patience:
+            early_stop = True
 
 if __name__ == "__main__":
     main()
