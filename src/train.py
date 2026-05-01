@@ -105,9 +105,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model = EarlyFusionModel(num_classes=len(name_to_id)).to(device)
+    model = EarlyFusionModel(num_classes=len(name_to_id), freeze_backbone=True).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.AdamW([
+        {'params': model.channel_proj.parameters(), 'lr': 1e-4},
+        {'params': model.classifier.parameters(),   'lr': 1e-4},
+    ], weight_decay=0.01)
 
     train_loader = DataLoader(train_ds, batch_size=16, shuffle=True,  num_workers=4, pin_memory=True)
     val_loader   = DataLoader(val_ds,   batch_size=16, shuffle=False, num_workers=4, pin_memory=True)
@@ -125,6 +128,17 @@ def main():
             break
 
         print(f"\nEpoch {epoch+1}/20")
+
+        if epoch == 5:
+            print("Unfreezing backbone...")
+            for param in model.backbone.parameters():
+                param.requires_grad = True
+
+            optimizer = torch.optim.AdamW([
+                {'params': model.backbone.parameters(),     'lr': 1e-6},
+                {'params': model.channel_proj.parameters(), 'lr': 1e-4},
+                {'params': model.classifier.parameters(),   'lr': 1e-4},
+            ], weight_decay=0.01)
 
         train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc     = evaluate(model, val_loader, criterion, device)
