@@ -4,8 +4,9 @@ import torch.nn as nn
 from tqdm import tqdm
 from pathlib import Path
 from early_fusion import EarlyFusionModel
+from model_transformer import get_transforms
 from src.data_gather import DuckDBManager
-from multimodal_dataset import CrypticBioDataset
+from multimodal_dataset import CrypticBioDataset, TransformDataset
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from dotenv import load_dotenv
@@ -86,15 +87,18 @@ def main():
         name_to_id=name_to_id,
         cb_folder=cb_folder,
         sh_folder=sh_folder,
+        db_path=db_path
     )
 
     labels_array = [dataset.id_to_label[str(i)] for i in valid_ids]
     train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels_array, random_state=42)
     val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=[labels_array[i] for i in temp_idx], random_state=42)
 
-    train_ds = torch.utils.data.Subset(dataset, train_idx)
-    val_ds   = torch.utils.data.Subset(dataset, val_idx)
-    test_ds  = torch.utils.data.Subset(dataset, test_idx)
+    data_transforms = get_transforms(transform_size=-1, normalize=([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]))
+
+    train_ds = TransformDataset(torch.utils.data.Subset(dataset, train_idx), transform=data_transforms['train'])
+    val_ds   = TransformDataset(torch.utils.data.Subset(dataset, val_idx),   transform=data_transforms['val'])
+    test_ds  = TransformDataset(torch.utils.data.Subset(dataset, test_idx),  transform=data_transforms['test'])
 
     print(f"Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}") 
 

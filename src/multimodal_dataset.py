@@ -1,30 +1,34 @@
 import os
-import glob
-import numpy as np
 import torch
 from PIL import Image
 from pathlib import Path
 from src.data_gather import DuckDBManager
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from dotenv import load_dotenv
 
 
-load_dotenv(".env")
+class TransformDataset(Dataset):
+    def __init__(self, subset, transform=None):
+        self.subset = subset
+        self.transform = transform
 
+    def __len__(self):
+        return len(self.subset)
 
-base_folder = Path(os.getenv("DATA_FOLDER"))
-db_path = base_folder / os.getenv("DATABASE")
-cb_folder = base_folder / os.getenv("CB_IMAGE_PATH")
+    def __getitem__(self, index):
+        cb, sh, label = self.subset[index]
+        if self.transform:
+            cb = self.transform(cb)
+            sh = self.transform(sh)
+        return cb, sh, label
 
 
 class CrypticBioDataset(Dataset):
-    def __init__(self, ids, name_to_id, cb_folder, sh_folder, limit=None):
+    def __init__(self, ids, name_to_id, cb_folder, sh_folder, db_path, limit=None):
         self.ids = ids[:limit] if limit else ids
         self.name_to_id = name_to_id
-
         self.cb_folder = Path(cb_folder)
         self.sh_folder = Path(sh_folder)
-
 
         with DuckDBManager(db_path) as db:
             df = db.con.execute("""
@@ -45,10 +49,8 @@ class CrypticBioDataset(Dataset):
         return len(self.ids)
     
 
-    def _load_image(self, path, size=(224,224)):
-        img = Image.open(path).convert("RGB").resize(size, Image.BILINEAR)
-        arr = np.array(img)
-        return torch.tensor(arr).permute(2, 0, 1).float() / 255.0
+    def _load_image(self, path, size=(224, 224)):
+        return Image.open(path).convert("RGB").resize(size, Image.BILINEAR)
     
 
     def __getitem__(self, idx):
