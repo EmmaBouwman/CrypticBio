@@ -1,6 +1,7 @@
 import torch
 from PIL import Image
 from src.data_gather import DuckDBManager
+from src.models import ModelType
 from torch.utils.data import Dataset
 
 def get_transforms(transform_size, mean, std):

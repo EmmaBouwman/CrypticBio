@@ -6,20 +6,21 @@ from dotenv import load_dotenv
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
-from src.multimodel_dataset import (
+from src.dataset import (
     AnimalSateliteDataset, 
     get_transforms, 
     Transform,
     TransformSingleModality
 )
-from src.model_transformer import ( 
+from src.models import ( 
     AnimalSatClassifier, 
     SingleModalityClassifier,
+    EarlyFusionModel,
     ModelType,
     train_epoch, 
     train_epoch_single_modality,
-    bs_check, 
-    bs_check_single_modality,
+    evaluate, 
+    evaluate_single_modality
 )
 from src.data_gather import DuckDBManager
 
