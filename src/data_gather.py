@@ -8,6 +8,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import requests
+import os
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -16,22 +17,25 @@ from sentinelhub import (
     BBox,
     DataCollection,
     MimeType,
+    MosaickingOrder,
     SentinelHubRequest,
     bbox_to_dimensions,
 )
 from sentinelhub.exceptions import DownloadFailedException
+from requests.exceptions import HTTPError
 
 
 class DuckDBManager:
     # Always be used with "with DuckDBManager(<path>) as db:"
-    def __init__(self, db_path: Path, table_name: str = "crypticbio", read_only: bool = False):
+    def __init__(self, db_path: Path, table_name: str = "crypticbio", readOnly: flag = True):
         self.db_path = db_path
         self.table_name = table_name
         self.read_only = read_only
         self.con = None
+        self.readOnly = readOnly
 
     def __enter__(self):
-        self.con = duckdb.connect(str(self.db_path), read_only=self.read_only)
+        self.con = duckdb.connect(self.db_path, read_only=self.readOnly)
         return self
 
     def __exit__(self, _type, _value, _traceback):
@@ -117,12 +121,18 @@ class SentinelHubManager:
         self.evalscript = """
             function setup() {
                 return {
-                    input: [{ bands: ["B02", "B03", "B04"] }],
-                    output: { bands: 3 }
+                    input: [{ bands: ["B02", "B03", "B04", "CLP"] }],
+                    output: [
+                        { id: "default", bands: 3 }, 
+                        { id: "metadata", bands: 1 }
+                    ]
                 };
             }
             function evaluatePixel(sample) {
-                return [sample.B04, sample.B03, sample.B02];
+                return {
+                    default: [sample.B04, sample.B03, sample.B02], 
+                    metadata: [sample.CLP] 
+                };
             }
         """
 
@@ -145,53 +155,92 @@ class SentinelHubManager:
 
         return start, end
 
-    def get_and_save_image(self, lat, lon, date, save_path):
+    def get_and_save_image(self, lat, lon, date, save_path, db_path):
         bbox_coords = self._get_bounding_box(lat, lon)
         bbox = BBox(bbox=bbox_coords, crs=CRS.WGS84)
         bbox_size = bbox_to_dimensions(bbox, resolution=self.resolution)
         start_date, end_date = self._get_date_range(date)
 
-        request = SentinelHubRequest(
-            evalscript=self.evalscript,
-            input_data=[
-                SentinelHubRequest.input_data(
-                    data_collection=DataCollection.SENTINEL2_L2A,
-                    time_interval=(start_date, end_date),
-                )
-            ],
-            responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
-            bbox=bbox,
-            size=bbox_size,
-            config=self.config,
-        )
+        for i in range(3):
+            request = SentinelHubRequest(
+                evalscript=self.evalscript,
+                input_data=[
+                    SentinelHubRequest.input_data(
+                        data_collection=DataCollection.SENTINEL2_L2A,
+                        time_interval=(start_date, end_date),
+                        mosaicking_order=MosaickingOrder.LEAST_CC
+                    )
+                ],
+                responses=[
+                    SentinelHubRequest.output_response("default", MimeType.PNG),
+                    SentinelHubRequest.output_response("metadata", MimeType.TIFF)
+                ],
+                bbox=bbox,
+                size=bbox_size,
+                config=self.config,
+            )
 
-        images = self._request_with_retry(request)
+            images = self._request_with_retry(request)
 
-        if images:
-            self._save_to_location(save_path, images[0])
-        else:
-            raise RuntimeError(f"No image found for {lat}, {lon}")
+            if images:
+                data = images[0]["default.png"]
+                cloud = images[0]["metadata.tif"]
+                cloud_score = int((np.mean(cloud) / 255) * 100)
+                
+                if cloud_score < 75: # 25% cloud
+                    date = datetime.strptime(date, "%Y-%m-%d")
+                    date = date.replace(year=date.year - 1)
+                    date = date.strftime("%Y-%m-%d")
+                    start_date, end_date = self._get_date_range(date)
+                    continue
+
+                base_name, extension = os.path.splitext(save_path)
+                final_save_path = f"{base_name}_{cloud_score}{extension}"
+
+                self._save_to_location(final_save_path, data)
+                with DuckDBManager(db_path, readOnly=False) as db:
+                    db.con.execute("""
+                        UPDATE crypticbio 
+                        SET sentinel_image = ?
+                        WHERE id = ?
+                    """, [final_save_path, int(base_name.split("/")[-1])])
+
+                print(f"Success: Image found for year {date}")
+                
+                return True, final_save_path
+            else:
+                print(f"Too cloudy or no data for {date}. Trying previous year...")
+                date = datetime.strptime(date, "%Y-%m-%d")
+                date = date.replace(year=date.year - 1)
+                date = date.strftime("%Y-%m-%d")
+                start_date, end_date = self._get_date_range(date)
+
+        return False, ""
 
     def _request_with_retry(self, request):
         for i in range(self.attempts):
             try:
                 return request.get_data()
-            except DownloadFailedException as e:
-                response = getattr(e.request_exception, "response", None)
-                status_code = getattr(response, "status_code", None)
+            except (DownloadFailedException, HTTPError) as e:
+                if isinstance(e, DownloadFailedException):
+                    response = getattr(e.request_exception, "response", None)
+                    status_code = getattr(response, "status_code", None)
 
-                if status_code == 429:
-                    print(f"Rate limit hit. Retrying in {(2**i) * 10}s...")
-                    time.sleep((2**i) * 10)
-                    continue
-                raise e
+                    if status_code == 429:
+                        print(f"Rate limit hit. Retrying in {(2**i) * 10}s...")
+                        time.sleep((2**i) * 10)
+                        continue
+                    raise e
+                else:
+                    raise e
         warnings.warn(
             f"Failed to download image after {self.attempts} attempts.", RuntimeWarning
         )
 
     def _save_to_location(self, path, image_array):
         try:
-            img = Image.fromarray(image_array.astype(np.uint8))
+            brigher_image = np.clip(image_array*2.5, 0, 255)
+            img = Image.fromarray(brigher_image.astype(np.uint8))
             img.save(path)
         except FileNotFoundError:
             raise FileNotFoundError(f"Directory does not exist for path: {path}. ")
