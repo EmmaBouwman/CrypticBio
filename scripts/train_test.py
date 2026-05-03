@@ -16,6 +16,7 @@ from src.models import (
     AnimalSatClassifier, 
     SingleModalityClassifier,
     EarlyFusionModel,
+    LateFusionModel,
     ModelType,
     train_epoch, 
     train_epoch_single_modality,
@@ -130,7 +131,17 @@ def main():
             {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
             {'params': model.classifier.parameters(),   'lr': args.lr_head},
         ], weight_decay=0.01)
-    
+    elif model_type == ModelType.Late:
+        model = LateFusionModel(num_classes=num_classes, freeze_backbone=True).to(device)
+        if not args.test_only:
+            train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
+            val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
+        test_ds = Transform(Subset(dataset, test_idx), transform=data_transforms['test'])
+
+        optimizer = torch.optim.AdamW([
+            {'params': model.classifier.parameters(),   'lr': args.lr_head},
+        ], weight_decay=0.01)
+
     criterion = CrossEntropyLoss(label_smoothing=0.1)
 
     if not args.test_only:
@@ -181,8 +192,17 @@ def main():
                         {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
                         {'params': model.classifier.parameters(),   'lr': args.lr_head},
                     ], weight_decay=0.01)
+                elif model_type == ModelType.Late:
+                    for param in model.backbone.parameters():
+                        param.requires_grad = True
 
-            if model_type == ModelType.Both or model_type == ModelType.Early:
+                    optimizer = torch.optim.AdamW([
+                        {'params': model.cb_encoder.parameters(),     'lr': args.lr_backbone},
+                        {'params': model.sh_encoder.parameters(),     'lr': args.lr_backbone},
+                        {'params': model.classifier.parameters(),   'lr': args.lr_head},
+                    ], weight_decay=0.01)
+
+            if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
                 train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
                 val_loss, val_acc = evaluate(model, val_loader, criterion, device)
             elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
@@ -221,7 +241,7 @@ def main():
         return
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    if model_type == ModelType.Both or model_type == ModelType.Early:
+    if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
         _, test_acc = evaluate(model, test_loader, criterion, device)
     else:
         _, test_acc = evaluate_single_modality(model, test_loader, criterion, device)

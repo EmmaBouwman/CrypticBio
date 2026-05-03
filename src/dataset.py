@@ -3,6 +3,7 @@ from PIL import Image
 from src.data_gather import DuckDBManager
 from src.models import ModelType
 from torch.utils.data import Dataset
+from torchvision import transforms
 
 def get_transforms(transform_size, mean, std):
     common_post_transforms = [
