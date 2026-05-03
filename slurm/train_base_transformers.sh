@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=train_tiny_model
+#SBATCH --job-name=train_base_model
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
 #SBATCH --mem=128G
 #SBATCH --time=7-00:00:00
 #SBATCH --partition=gpu-2080ti-11g 
-#SBATCH --gres=gpu:2080_ti:2
+#SBATCH --gres=gpu:2080_ti:1
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
