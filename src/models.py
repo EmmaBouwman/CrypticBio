@@ -5,6 +5,7 @@ import timm
 
 from tqdm import tqdm
 from src.data_gather import DuckDBManager
+from sklearn.metrics import f1_score, recall_score, precision_score
 from torch.utils.data import Dataset
 from torchvision import models
 from PIL import Image
@@ -165,6 +166,8 @@ def train_epoch(model, loader, optimizer, criterion, device):
     total_loss = 0
     correct = 0
     total = 0
+    all_predicted = []
+    all_labels = []
 
     for cb, sh, labels in tqdm(loader, desc="Training"):
         cb, sh, labels = cb.to(device), sh.to(device), labels.to(device)
@@ -180,13 +183,24 @@ def train_epoch(model, loader, optimizer, criterion, device):
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
 
-    return total_loss / len(loader), 100. * correct / total
+        all_predicted.extend(predicted.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+
+    avg_loss = total_loss / len(loader)
+    accuracy = 100. * correct / total
+    f1 = f1_score(all_labels, all_predicted, average='weighted', zero_division=0)
+    recall = recall_score(all_labels, all_predicted, average='weighted', zero_division=0)
+    precision = precision_score(all_labels, all_predicted, average='weighted', zero_division=0)
+
+    return avg_loss, accuracy, f1, recall, precision
 
 def train_epoch_single_modality(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
     correct = 0
     total = 0
+    all_predicted = []
+    all_labels = []
 
     for image, labels in tqdm(loader, desc="Training"):
         image, labels = image.to(device), labels.to(device)
@@ -202,13 +216,25 @@ def train_epoch_single_modality(model, loader, optimizer, criterion, device):
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
 
-    return total_loss / len(loader), 100. * correct / total
+        all_predicted.extend(predicted.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+
+    avg_loss = total_loss / len(loader)
+    accuracy = 100. * correct / total
+    f1 = f1_score(all_labels, all_predicted, average='weighted', zero_division=0)
+    recall = recall_score(all_labels, all_predicted, average='weighted', zero_division=0)
+    precision = precision_score(all_labels, all_predicted, average='weighted', zero_division=0)
+
+    return avg_loss, accuracy, f1, recall, precision
 
 def evaluate(model, loader, criterion, device):
     model.eval()
     total_loss = 0
     correct = 0
     total = 0
+    all_predicted = []
+    all_labels = []
+
     with torch.no_grad():
         for animal, sat, labels in loader:
             animal, sat, labels = animal.to(device), sat.to(device), labels.to(device)
@@ -220,14 +246,27 @@ def evaluate(model, loader, criterion, device):
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
+
+            all_predicted.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+        avg_loss = total_loss / len(loader)
+        accuracy = 100. * correct / total
+        f1 = f1_score(all_labels, all_predicted, average='weighted', zero_division=0)
+        recall = recall_score(all_labels, all_predicted, average='weighted', zero_division=0)
+        precision = precision_score(all_labels, all_predicted, average='weighted', zero_division=0)
+
+    return avg_loss, accuracy, f1, recall, precision
             
-    return total_loss / len(loader), 100. * correct / total
 
 def evaluate_single_modality(model, loader, criterion, device):
     model.eval()
     total_loss = 0
     correct = 0
     total = 0
+    all_predicted = []
+    all_labels = []
+
     with torch.no_grad():
         for image, labels in loader:
             image, labels = image.to(device), labels.to(device)
@@ -239,5 +278,14 @@ def evaluate_single_modality(model, loader, criterion, device):
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
+
+            all_predicted.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
             
-    return total_loss / len(loader), 100. * correct / total
+        avg_loss = total_loss / len(loader)
+        accuracy = 100. * correct / total
+        f1 = f1_score(all_labels, all_predicted, average='weighted', zero_division=0)
+        recall = recall_score(all_labels, all_predicted, average='weighted', zero_division=0)
+        precision = precision_score(all_labels, all_predicted, average='weighted', zero_division=0)
+
+    return avg_loss, accuracy, f1, recall, precision

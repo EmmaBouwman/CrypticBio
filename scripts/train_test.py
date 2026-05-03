@@ -203,14 +203,14 @@ def main():
                     ], weight_decay=0.01)
 
             if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
-                train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
-                val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+                train_loss, train_acc, train_f1, train_recall, train_precision = train_epoch(model, train_loader, optimizer, criterion, device)
+                val_loss, val_acc, val_f1, val_recall, val_precision = evaluate(model, val_loader, criterion, device)
             elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
-                train_loss, train_acc = train_epoch_single_modality(model, train_loader, optimizer, criterion, device)
-                val_loss, val_acc = evaluate_single_modality(model, val_loader, criterion, device)
+                train_loss, train_acc, train_f1, train_recall, train_precision = train_epoch_single_modality(model, train_loader, optimizer, criterion, device)
+                val_loss, val_acc, val_f1, val_recall, val_precision = evaluate_single_modality(model, val_loader, criterion, device)
             
-            print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-            print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+            print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}% | F1: {train_f1:.4f} | Recall: {train_recall:.4f} | Precision: {train_precision:.4f}")
+            print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}% | F1: {val_f1:.4f} | Recall: {val_recall:.4f} | Precision: {val_precision:.4f}")
  
             # Check for improvement
             if val_loss < best_val_loss:
@@ -242,10 +242,13 @@ def main():
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
-        _, test_acc = evaluate(model, test_loader, criterion, device)
+        _, test_acc, test_f1, test_recall, test_precision = evaluate(model, test_loader, criterion, device)
     else:
-        _, test_acc = evaluate_single_modality(model, test_loader, criterion, device)
-    print(f"\n Final Test Accuracy: {test_acc:.2f}%")
+        _, test_acc, test_f1, test_recall, test_precision = evaluate_single_modality(model, test_loader, criterion, device)
+    print(f"\nFinal Test Accuracy:  {test_acc:.2f}%")
+    print(f"Final Test F1:        {test_f1:.4f}")
+    print(f"Final Test Recall:    {test_recall:.4f}")
+    print(f"Final Test Precision: {test_precision:.4f}")
 
 if __name__ == "__main__":
     main()
