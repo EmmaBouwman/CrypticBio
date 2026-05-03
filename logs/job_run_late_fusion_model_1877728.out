@@ -1,0 +1,18 @@
+Starting to sync uv
+Resolved 142 packages in 0.75ms
+Audited 92 packages in 0.20ms
+Synced uv
+Starting to run the model
+python-dotenv could not parse statement starting at line 1
+start
+Traceback (most recent call last):
+  File "/zfsstore/user/s2800020/CrypticBio/src/train.py", line 15, in <module>
+    base_folder = Path(os.getenv("DATA_FOLDER"))
+  File "/usr/lib64/python3.9/pathlib.py", line 1000, in __new__
+    self = cls._from_parts(args, init=False)
+  File "/usr/lib64/python3.9/pathlib.py", line 625, in _from_parts
+    drv, root, parts = self._parse_args(args)
+  File "/usr/lib64/python3.9/pathlib.py", line 609, in _parse_args
+    a = os.fspath(a)
+TypeError: expected str, bytes or os.PathLike object, not NoneType
+Succesfully ran the model

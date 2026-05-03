@@ -30,6 +30,7 @@ class DuckDBManager:
     def __init__(self, db_path: Path, table_name: str = "crypticbio", readOnly: flag = True):
         self.db_path = db_path
         self.table_name = table_name
+        self.read_only = read_only
         self.con = None
         self.readOnly = readOnly
 
