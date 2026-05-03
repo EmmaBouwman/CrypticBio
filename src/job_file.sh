@@ -5,13 +5,16 @@
 #SBATCH --mail-type="ALL"
 #SBATCH --mem=32G
 #SBATCH --time=4:00:00
-#SBATCH --partition=gpu-short
+#SBATCH --partition=gpu-2080ti-11g
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=6
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=3
+#SBATCH --cpus-per-task=8
 
+module purge 
 module load ALICE/default
+module load slurm
+module load CUDA/12.3.2
 module load uv
 
 echo "Starting to sync uv"

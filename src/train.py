@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 from pathlib import Path
-from early_fusion import EarlyFusionModel
+from late_fusion import LateFusionModel
 from src.data_gather import DuckDBManager
 from multimodal_dataset import CrypticBioDataset
 from torch.utils.data import DataLoader
@@ -52,7 +52,7 @@ loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
 #main training loop
 if __name__=="__main__":
 
-    model = EarlyFusionModel(num_classes=len(name_to_id))
+    model = LateFusionModel(num_classes=len(name_to_id))
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
