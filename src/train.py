@@ -104,13 +104,13 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model = EarlyFusionModel(num_classes=len(name_to_id), freeze_backbone=False).to(device)
+    model = EarlyFusionModel(num_classes=len(name_to_id), freeze_backbone=True).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
-    # optimizer = torch.optim.AdamW([
-    #     {'params': model.channel_proj.parameters(), 'lr': 1e-4},
-    #     {'params': model.classifier.parameters(),   'lr': 1e-4},
-    # ], weight_decay=0.01)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
+    optimizer = torch.optim.AdamW([
+        {'params': model.channel_proj.parameters(), 'lr': 1e-4},
+        {'params': model.classifier.parameters(),   'lr': 1e-4},
+    ], weight_decay=0.01)
 
     train_loader = DataLoader(train_ds, batch_size=16, shuffle=True,  num_workers=8, pin_memory=True)
     val_loader   = DataLoader(val_ds,   batch_size=16, shuffle=False, num_workers=8, pin_memory=True)
@@ -130,19 +130,19 @@ def main():
 
         print(f"\nEpoch {epoch+1}/{num_epochs}")
 
-        # if epoch == 5:
-        #     print("Unfreezing backbone...")
-        #     epochs_no_improve = 0  
-        #     best_val_loss = float('inf')  
+        if epoch == 5:
+            print("Unfreezing backbone...")
+            epochs_no_improve = 0  
+            best_val_loss = float('inf')  
 
-        #     for param in model.backbone.parameters():
-        #         param.requires_grad = True
+            for param in model.backbone.parameters():
+                param.requires_grad = True
 
-        #     optimizer = torch.optim.AdamW([
-        #         {'params': model.backbone.parameters(),     'lr': 1e-5},
-        #         {'params': model.channel_proj.parameters(), 'lr': 1e-4},
-        #         {'params': model.classifier.parameters(),   'lr': 1e-4},
-        #     ], weight_decay=0.01)
+            optimizer = torch.optim.AdamW([
+                {'params': model.backbone.parameters(),     'lr': 1e-5},
+                {'params': model.channel_proj.parameters(), 'lr': 1e-4},
+                {'params': model.classifier.parameters(),   'lr': 1e-4},
+            ], weight_decay=0.01)
 
         train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc     = evaluate(model, val_loader, criterion, device)
