@@ -4,20 +4,22 @@ import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
+from src.multimodel_dataset import (
+    AnimalSateliteDataset, 
+    get_transforms, 
+    Transform,
+    TransformSingleModality
+)
 from src.model_transformer import ( 
     AnimalSatClassifier, 
-    AnimalSateliteDataset, 
     SingleModalityClassifier,
     ModelType,
-    get_transforms, 
     train_epoch, 
     train_epoch_single_modality,
     bs_check, 
     bs_check_single_modality,
-    Transform,
-    TransformSingleModality
 )
 from src.data_gather import DuckDBManager
 
@@ -31,7 +33,7 @@ def parse_args():
     parser.add_argument("--lr_head", type=float, default=1e-4, help="Learning rate for attention and classifier")
     parser.add_argument("--min_samples", type=int, default=50, help="Minimum samples per species to include")
     parser.add_argument("--model_type", type=int, default=3, 
-                        help="Model to be used, 1 = Only Animal image, 2 = Only Satelite image, 3 = Cross attention (both images)")
+                        help="Model to be used, 1 = Only Animal image, 2 = Only Satelite image, 3 = Cross attention (both images), 4 = Early Fusion, 5 = Late Fusion")
     
     # Model Setup
     parser.add_argument("--model_name", type=str, default="vit_base_patch16_224", help="Timm model string")
@@ -58,7 +60,6 @@ def main():
     # Load IDs from folder
     all_ids = [int(os.path.splitext(f)[0]) for f in os.listdir(cb_folder) if f.endswith('.png')]
 
-    print(f"Filtering species with at least {args.min_samples} samples...")
     with DuckDBManager(db_path) as db:
         filtered_data = db.con.execute("""
             WITH valid_species AS (
@@ -93,27 +94,40 @@ def main():
 
     if model_type == ModelType.Animal or model_type == ModelType.Satelite or model_type == ModelType.Both:
         data_transforms = get_transforms(args.transform_size, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    elif model_type == ModelType.Early or model_type == ModelType.Late:
+        data_transforms = get_transforms(args.transform_size, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
     if model_type == ModelType.Both:
         model = AnimalSatClassifier(num_classes=num_classes, model_name=args.model_name).to(device)
         if not args.test_only:
-            train_ds = Transform(torch.utils.data.Subset(dataset, train_idx), transform=data_transforms['train'])
-            val_ds = Transform(torch.utils.data.Subset(dataset, val_idx), transform=data_transforms['val'])
-        test_ds = Transform(torch.utils.data.Subset(dataset, test_idx), transform=data_transforms['test'])
+            train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
+            val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
+        test_ds = Transform(Subset(dataset, test_idx), transform=data_transforms['test'])
 
         optimizer = torch.optim.AdamW([
             {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
             {'params': model.classifier.parameters(), 'lr': args.lr_head},
         ], weight_decay=0.01)
-    else:
+    elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
         model = SingleModalityClassifier(num_classes=num_classes, model_name=args.model_name).to(device)
         if not args.test_only:
-            train_ds = TransformSingleModality(torch.utils.data.Subset(dataset, train_idx), transform=data_transforms['train'])
-            val_ds = TransformSingleModality(torch.utils.data.Subset(dataset, val_idx), transform=data_transforms['val'])
-        test_ds = TransformSingleModality(torch.utils.data.Subset(dataset, test_idx), transform=data_transforms['test'])
+            train_ds = TransformSingleModality(Subset(dataset, train_idx), transform=data_transforms['train'])
+            val_ds = TransformSingleModality(Subset(dataset, val_idx), transform=data_transforms['val'])
+        test_ds = TransformSingleModality(Subset(dataset, test_idx), transform=data_transforms['test'])
 
         optimizer = torch.optim.AdamW([
             {'params': model.classifier.parameters(), 'lr': args.lr_head},
+        ], weight_decay=0.01)
+    elif model_type == ModelType.Early:
+        model = EarlyFusionModel(num_classes=num_classes, freeze_backbone=True).to(device)
+        if not args.test_only:
+            train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
+            val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
+        test_ds = Transform(Subset(dataset, test_idx), transform=data_transforms['test'])
+
+        optimizer = torch.optim.AdamW([
+            {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
+            {'params': model.classifier.parameters(),   'lr': args.lr_head},
         ], weight_decay=0.01)
     
     criterion = CrossEntropyLoss(label_smoothing=0.1)
@@ -149,7 +163,7 @@ def main():
                         {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
                         {'params': model.classifier.parameters(), 'lr': args.lr_head},
                     ], weight_decay=0.01)
-                else:
+                elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
                     for param in model.backbone.parameters():
                         param.requires_grad = True
 
@@ -157,16 +171,26 @@ def main():
                         {'params': model.backbone.parameters(), 'lr': args.lr_backbone}, # Very low LR for fine-tuning
                         {'params': model.classifier.parameters(), 'lr': args.lr_head}
                     ], weight_decay=0.01)
+                elif model_type == ModelType.Early:
+                    for param in model.backbone.parameters():
+                        param.requires_grad = True
 
-            if model_type == ModelType.Both:
-                train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
-                val_loss, val_acc = bs_check(model, val_loader, criterion, device)
-            else:
-                train_loss = train_epoch_single_modality(model, train_loader, optimizer, criterion, device)
-                val_loss, val_acc = bs_check_single_modality(model, val_loader, criterion, device)
+                    optimizer = torch.optim.AdamW([
+                        {'params': model.backbone.parameters(),     'lr': args.lr_backbone},
+                        {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
+                        {'params': model.classifier.parameters(),   'lr': args.lr_head},
+                    ], weight_decay=0.01)
+
+            if model_type == ModelType.Both or model_type == ModelType.Early:
+                train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
+                val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+            elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
+                train_loss, train_acc = train_epoch_single_modality(model, train_loader, optimizer, criterion, device)
+                val_loss, val_acc = evaluate_single_modality(model, val_loader, criterion, device)
             
-            print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
-            
+            print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
+            print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}%")
+ 
             # Check for improvement
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -196,11 +220,11 @@ def main():
         return
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    if model_type == ModelType.Both:
-        _, test_acc = bs_check(model, test_loader, criterion, device)
+    if model_type == ModelType.Both or model_type == ModelType.Early:
+        _, test_acc = evaluate(model, test_loader, criterion, device)
     else:
-        _, test_acc = bs_check_single_modality(model, test_loader, criterion, device)
-    print(f"\n🚀 Final Test Accuracy: {test_acc:.2f}%")
+        _, test_acc = evaluate_single_modality(model, test_loader, criterion, device)
+    print(f"\n Final Test Accuracy: {test_acc:.2f}%")
 
 if __name__ == "__main__":
     main()
