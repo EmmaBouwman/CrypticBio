@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_base_model
+#SBATCH --job-name=train_base_model_animal
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
@@ -38,7 +38,8 @@ uv run scripts/train_test.py \
     --num_workers 8 \
     --epochs 100 \
     --model_name "vit_base_patch16_224" \
-    --save_name "best_animal_sat_base_resized.pth" \
+    --save_name "best_animal_base_resized.pth" \
     --lr_head 2e-4 \
     --lr_backbone 2e-6 \
-    --transform_size 224
+    --transform_size 224 \
+    --model_type 1
