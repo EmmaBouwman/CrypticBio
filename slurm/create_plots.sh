@@ -1,3 +1,4 @@
+#!/bin/bash
 #SBATCH --job-name=plot_from_out
 #SBATCH --output=logs/plot_job_%x_%j.out
 #SBATCH --mail-user="s.......@vuw.leidenuniv.nl"
@@ -17,5 +18,5 @@ module load uv
 
 echo "Starting plotting job (Job ID: $SLURM_JOB_ID, host: $(hostname))"
 uv sync
-uv run scripts/plot_from_out.py logs/*.out
+uv run scripts/plot_from_out.py logs/tiny_*.out
 echo "Done!"
