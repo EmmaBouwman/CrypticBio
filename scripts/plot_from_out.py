@@ -28,25 +28,25 @@ def parse_out_file(path):
 
     return epochs, train_loss, val_loss, train_acc, val_acc
 
-epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file("./logs/job_early_fusion_model_2076542.out")
 
+output_dir = Path("plots")
+output_dir.mkdir(exist_ok=True)
 
+for out_file in sys.argv[1:]:
+    epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file(out_file)
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
-ax1.plot(epochs, train_loss, label="Train")
-ax1.plot(epochs, val_loss,   label="Val")
-ax1.set_title("Loss")
-ax1.legend()
+    ax1.plot(epochs, train_loss, label="Train")
+    ax1.plot(epochs, val_loss, label="Val")
+    ax1.legend()
+    ax1.set_title("Loss")
 
-ax2.plot(epochs, train_acc, label="Train")
-ax2.plot(epochs, val_acc,   label="Val")
-ax2.set_title("Accuracy")
-ax2.legend()
+    ax2.plot(epochs, train_acc, label="Train")
+    ax2.plot(epochs, val_acc, label="Val")
+    ax2.legend()
+    ax2.set_title("Accuracy")
 
-plt.savefig("plots.png")
-
-
-
-out_file = sys.argv[1]   
-epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file(out_file)
+    name = Path(out_file).stem
+    plt.savefig(output_dir / f"{name}.png")
+    plt.close()
