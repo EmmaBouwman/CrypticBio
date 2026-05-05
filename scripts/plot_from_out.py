@@ -45,3 +45,8 @@ ax2.set_title("Accuracy")
 ax2.legend()
 
 plt.savefig("plots.png")
+
+
+
+out_file = sys.argv[1]   
+epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file(out_file)
