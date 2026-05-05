@@ -44,7 +44,7 @@ class AnimalSatClassifier(nn.Module):
         # Concatenates: [animal tokens] + [Satelite with animal tokens]
         self.classifier = nn.Linear(embed_dim * 2, num_classes)
 
-    def forward(self, animal_img, sat_img):
+    def forward(self, animal_img, sat_img, attn_bool: bool = False):
         # Feature Extraction
         b_features = self.animal_backbone.forward_features(animal_img)
         s_features = self.sat_backbone.forward_features(sat_img)
@@ -53,10 +53,11 @@ class AnimalSatClassifier(nn.Module):
         animal_queries = b_features[:, 1:, :]
 
         # Cross-Attention: Using the animal queries to find relevant info in the satellite map
-        attn_output, _ = self.cross_attn(
+        attn_output, attn_weights = self.cross_attn(
             query=animal_queries, 
             key=s_features, 
-            value=s_features
+            value=s_features,
+            need_weights=True
         )
 
         # Global Average Pooling
@@ -68,6 +69,9 @@ class AnimalSatClassifier(nn.Module):
         # Apply Layernorm before classification
         combined = self.norm(combined)
 
+        if attn_bool:
+            return self.classifier(combined), attn_weights
+        
         # Final Scientific label Prediction
         return self.classifier(combined)
 
