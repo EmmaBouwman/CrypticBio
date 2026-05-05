@@ -29,6 +29,19 @@ def parse_out_file(path):
     return epochs, train_loss, val_loss, train_acc, val_acc
 
 epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file("./logs/job_early_fusion_model_2076542.out")
-print(epochs[:5])       
-print(train_acc[:5])    
 
+
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+ax1.plot(epochs, train_loss, label="Train")
+ax1.plot(epochs, val_loss,   label="Val")
+ax1.set_title("Loss")
+ax1.legend()
+
+ax2.plot(epochs, train_acc, label="Train")
+ax2.plot(epochs, val_acc,   label="Val")
+ax2.set_title("Accuracy")
+ax2.legend()
+
+plt.savefig("plots.png")
