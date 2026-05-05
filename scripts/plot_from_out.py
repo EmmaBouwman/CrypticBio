@@ -42,13 +42,29 @@ for out_file in sys.argv[1:]:
 
     ax1.plot(epochs, train_loss, label="Train")
     ax1.plot(epochs, val_loss, label="Val")
+    ax1.axvline(x=5, color="gray", linestyle="--", linewidth=1.0, label="backbone unfrozen")
     ax1.legend()
     ax1.set_title("Loss")
+    ax1.set_xlabel("Epoch")        
+    ax1.set_ylabel("Loss")        
+
 
     ax2.plot(epochs, train_acc, label="Train")
     ax2.plot(epochs, val_acc, label="Val")
+    best_val = max(val_acc)
+    best_ep  = epochs[val_acc.index(best_val)]
+
+    ax2.scatter([best_ep], [best_val], color="red", zorder=5)
+    ax2.annotate(f"best: {best_val:.1f}%\n(epoch {best_ep})",
+             xy=(best_ep, best_val),
+             xytext=(best_ep + 2, best_val - 5),
+             arrowprops=dict(arrowstyle="->", color="red"),
+             color="red", fontsize=8)
+    ax2.axvline(x=5, color="gray", linestyle="--", linewidth=1.0, label="backbone unfrozen")
     ax2.legend()
     ax2.set_title("Accuracy")
+    ax2.set_xlabel("Epoch")       
+    ax2.set_ylabel("Accuracy (%)")
 
     name = Path(out_file).stem
     plt.savefig(output_dir / f"{name}.png")
