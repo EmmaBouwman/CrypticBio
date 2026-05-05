@@ -28,12 +28,15 @@ def parse_out_file(path):
 
     return epochs, train_loss, val_loss, train_acc, val_acc
 
-
 output_dir = Path("plots")
 output_dir.mkdir(exist_ok=True)
 
 for out_file in sys.argv[1:]:
     epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file(out_file)
+
+    if not epochs:
+        print(f"Skipping {out_file}: no data found")
+        continue
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
