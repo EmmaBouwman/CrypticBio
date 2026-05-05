@@ -1,9 +1,14 @@
 import re
 import sys
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 
+plt.rcParams.update({
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.alpha": 0.3,
+})
 
 def parse_out_file(path):
     epochs, train_loss, val_loss = [], [], []
@@ -67,5 +72,6 @@ for out_file in sys.argv[1:]:
     ax2.set_ylabel("Accuracy (%)")
 
     name = Path(out_file).stem
+    fig.suptitle(name, fontsize=11, fontweight="bold")
     plt.savefig(output_dir / f"{name}.png")
     plt.close()
