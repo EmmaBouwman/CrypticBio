@@ -34,7 +34,7 @@ echo "Starting job for vit_base_patch16_224"
 
 # Run the script with your requested parameters
 uv run scripts/train_test.py \
-    --batch_size 16 \
+    --batch_size 64 \
     --num_workers 8 \
     --epochs 100 \
     --model_name "vit_base_patch16_224" \

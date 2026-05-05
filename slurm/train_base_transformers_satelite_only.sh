@@ -34,11 +34,11 @@ echo "Starting job for vit_base_patch16_224"
 
 # Run the script with your requested parameters
 uv run scripts/train_test.py \
-    --batch_size 16 \
+    --batch_size 64 \
     --num_workers 8 \
     --epochs 100 \
     --model_name "vit_base_patch16_224" \
-    --save_name "best_animal_sat_resized.pth" \
+    --save_name "best_sat_base_resized.pth" \
     --lr_head 2e-4 \
     --lr_backbone 2e-6 \
     --transform_size 224 \
