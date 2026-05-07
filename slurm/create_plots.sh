@@ -14,9 +14,9 @@ set -e
 
 module purge
 module load ALICE/default
-module load uv
+
 
 echo "Starting plotting job (Job ID: $SLURM_JOB_ID, host: $(hostname))"
-uv sync
-uv run scripts/plot_from_out.py logs/*.out
+source .venv/bin/activate
+python scripts/plot_from_out.py logs/*.out
 echo "Done!"
