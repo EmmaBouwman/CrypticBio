@@ -98,7 +98,7 @@ class SingleModalityClassifier(nn.Module):
         return self.classifier(features[:, 0, :])
 
 class EarlyFusionModel(nn.Module):
-    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False):
+    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False, dropout=0.3):
         super().__init__()
 
         
@@ -120,7 +120,7 @@ class EarlyFusionModel(nn.Module):
             nn.LayerNorm(embed_dim),
             nn.Linear(embed_dim, embed_dim // 2),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout),
             nn.Linear(embed_dim // 2, num_classes),
         )
 

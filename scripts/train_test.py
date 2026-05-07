@@ -33,10 +33,13 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=20, help="Number of epochs to train")
     parser.add_argument("--lr_backbone", type=float, default=1e-6, help="Learning rate for ViT backbones")
     parser.add_argument("--lr_head", type=float, default=1e-4, help="Learning rate for attention and classifier")
+    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate in classifier head")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay for optimizer")
     parser.add_argument("--min_samples", type=int, default=50, help="Minimum samples per species to include")
     parser.add_argument("--model_type", type=int, default=3, 
                         help="Model to be used, 1 = Only Animal image, 2 = Only Satelite image, 3 = Cross attention (both images), 4 = Early Fusion, 5 = Late Fusion")
     
+
     # Model Setup
     parser.add_argument("--model_name", type=str, default="vit_base_patch16_224", help="Timm model string")
     parser.add_argument("--save_name", type=str, default="best_animal_sat_model.pth", help="Filename for best checkpoint")
@@ -121,7 +124,7 @@ def main():
             {'params': model.classifier.parameters(), 'lr': args.lr_head},
         ], weight_decay=0.01)
     elif model_type == ModelType.Early:
-        model = EarlyFusionModel(num_classes=num_classes, freeze_backbone=True).to(device)
+        model = EarlyFusionModel(num_classes=num_classes, freeze_backbone=True,  dropout=args.dropout).to(device)
         if not args.test_only:
             train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
             val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
@@ -130,7 +133,7 @@ def main():
         optimizer = torch.optim.AdamW([
             {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
             {'params': model.classifier.parameters(),   'lr': args.lr_head},
-        ], weight_decay=0.01)
+        ], weight_decay=args.weight_decay)
     elif model_type == ModelType.Late:
         model = LateFusionModel(num_classes=num_classes, freeze_backbone=True).to(device)
         if not args.test_only:
@@ -191,7 +194,7 @@ def main():
                         {'params': model.backbone.parameters(),     'lr': args.lr_backbone},
                         {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
                         {'params': model.classifier.parameters(),   'lr': args.lr_head},
-                    ], weight_decay=0.01)
+                    ], weight_decay=args.weight_decay)
                 elif model_type == ModelType.Late:
                     for param in model.backbone.parameters():
                         param.requires_grad = True
