@@ -17,6 +17,7 @@ class ModelType(Enum):
     Both = 3
     Early = 4
     Late = 5
+    Gated = 6
 
 class AnimalSatClassifier(nn.Module):
     def __init__(self, num_classes, model_name='vit_tiny_patch16_224', freeze_backbone=True):
@@ -127,39 +128,65 @@ class EarlyFusionModel(nn.Module):
         return self.classifier(features)
 
 class LateFusionModel(nn.Module):
-    def __init__(self, num_classes, freeze_backbone=False):
+    def __init__(self, num_classes, dropout_rate, model_name, freeze_backbone=False, model_type=ModelType.Late):
         super().__init__()
+        print(model_type)
+        self.model_type = ModelType(model_type)
 
-        self.cb_encoder = models.resnet18(weights="IMAGENET1K_V1")
-        self.sh_encoder = models.resnet18(weights="IMAGENET1K_V1")
+        if model_name == "resnet18":
+            self.cb_encoder = models.resnet18(weights="IMAGENET1K_V1")
+            self.sh_encoder = models.resnet18(weights="IMAGENET1K_V1")
+            embed_dim = 512
+
+        elif model_name == "resnet50":
+            self.cb_encoder = models.resnet50(weights="IMAGENET1K_V1")
+            self.sh_encoder = models.resnet50(weights="IMAGENET1K_V1")
+            embed_dim = 2048
 
         self.cb_encoder.fc = nn.Identity()
         self.sh_encoder.fc = nn.Identity()
 
         embed_dim = 512
-        fusion_dim = embed_dim * 2
+        fusion_dim = embed_dim * 2        
+
+        self.backbone = nn.ModuleList([self.cb_encoder, self.sh_encoder])
 
         if freeze_backbone:
-            for param in self.cb_encoder.parameters():
-                param.requires_grad = False
-            for param in self.sh_encoder.parameters():
-                param.requires_grad = False
-       	
+            for module in self.backbone:
+                for param in module.parameters():
+                    param.requires_grad = False
+
+        if model_type == ModelType.Late:
+            in_dim = fusion_dim
+            hidden_dim = embed_dim
+        elif model_type == ModelType.Gated:
+            in_dim = embed_dim
+            hidden_dim = embed_dim
+        else:
+            raise ValueError(f"Unsupported model_type: {model_type}") 
+
         self.classifier = nn.Sequential(
-            nn.LayerNorm(fusion_dim),
-            nn.Linear(fusion_dim, embed_dim),
+            nn.LayerNorm(in_dim),
+            nn.Linear(in_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(embed_dim, num_classes)
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_dim, num_classes)
         )
 
     def forward(self, cb, sh):
         feat_cb = self.cb_encoder(cb)
         feat_sh = self.sh_encoder(sh)
 
-        features = torch.cat([feat_cb, feat_sh], dim=1)             
-        
+        if self.model_type == ModelType.Late:
+            features = torch.cat([feat_cb, feat_sh], dim=1)
+
+        elif self.model_type == ModelType.Gated:
+            gate_input = torch.cat([feat_cb, feat_sh], dim=1)
+            gate = torch.sigmoid(self.gate_layer(gate_input))
+            features = gate * feat_cb + (1 - gate) * feat_sh
+
         return self.classifier(features)
+
 
 def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
