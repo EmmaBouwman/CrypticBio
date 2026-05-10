@@ -124,15 +124,14 @@ def main():
             {'params': model.classifier.parameters(), 'lr': args.lr_head},
         ], weight_decay=0.01)
     elif model_type == ModelType.Early:
-        model = EarlyFusionModel(num_classes=num_classes, freeze_backbone=True,  dropout=args.dropout).to(device)
+        model = EarlyFusionModel(num_classes=num_classes, model_name=args.model_name, freeze_backbone=True, dropout=args.dropout).to(device)
         if not args.test_only:
             train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
             val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
         test_ds = Transform(Subset(dataset, test_idx), transform=data_transforms['test'])
 
         optimizer = torch.optim.AdamW([
-            {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
-            {'params': model.classifier.parameters(),   'lr': args.lr_head},
+            {'params': model.classifier.parameters(), 'lr': args.lr_head},
         ], weight_decay=args.weight_decay)
     elif model_type == ModelType.Late:
         model = LateFusionModel(num_classes=num_classes, freeze_backbone=True).to(device)
@@ -192,7 +191,6 @@ def main():
 
                     optimizer = torch.optim.AdamW([
                         {'params': model.backbone.parameters(),     'lr': args.lr_backbone},
-                        {'params': model.channel_proj.parameters(), 'lr': args.lr_head},
                         {'params': model.classifier.parameters(),   'lr': args.lr_head},
                     ], weight_decay=args.weight_decay)
                 elif model_type == ModelType.Late:
