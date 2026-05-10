@@ -4,5 +4,6 @@
 __pycache__/
 *_cache/
 bad_rows.txt
-logs/
-plots/
+logs2/
+plots2/
+*.pth
