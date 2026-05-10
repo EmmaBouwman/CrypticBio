@@ -25,6 +25,12 @@ from src.models import (
 )
 from src.data_gather import DuckDBManager
 
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+print("device count:", torch.cuda.device_count())
+x = torch.rand(3, 3).cuda()
+print(x)
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Animal Sat Transformer Classifier")
     
@@ -35,7 +41,10 @@ def parse_args():
     parser.add_argument("--lr_head", type=float, default=1e-4, help="Learning rate for attention and classifier")
     parser.add_argument("--min_samples", type=int, default=50, help="Minimum samples per species to include")
     parser.add_argument("--model_type", type=int, default=3, 
-                        help="Model to be used, 1 = Only Animal image, 2 = Only Satelite image, 3 = Cross attention (both images), 4 = Early Fusion, 5 = Late Fusion")
+                        help="Model to be used, 1 = Only Animal image, 2 = Only Satelite image, 3 = Cross attention (both images), 4 = Early Fusion, 5 = Late Fusion, 6 = Gated fusion")
+    parser.add_argument("--weight_decay", type=float, default=1e-2, help="Weigth decay")
+    parser.add_argument("--dropout_rate", type=float, default=0.3, help="Minimum samples per species to include")
+
     
     # Model Setup
     parser.add_argument("--model_name", type=str, default="vit_base_patch16_224", help="Timm model string")
@@ -96,7 +105,7 @@ def main():
 
     if model_type == ModelType.Animal or model_type == ModelType.Satelite or model_type == ModelType.Both:
         data_transforms = get_transforms(args.transform_size, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-    elif model_type == ModelType.Early or model_type == ModelType.Late:
+    elif model_type in [ModelType.Early, ModelType.Late, ModelType.Gated]:
         data_transforms = get_transforms(args.transform_size, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
     if model_type == ModelType.Both:
@@ -132,7 +141,8 @@ def main():
             {'params': model.classifier.parameters(),   'lr': args.lr_head},
         ], weight_decay=0.01)
     elif model_type == ModelType.Late:
-        model = LateFusionModel(num_classes=num_classes, freeze_backbone=True).to(device)
+        model_type = ModelType(args.model_type)
+        model = LateFusionModel(num_classes=num_classes, dropout_rate=args.dropout_rate, model_name=args.model_name, freeze_backbone=True, model_type=model_type).to(device)
         if not args.test_only:
             train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
             val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
@@ -140,7 +150,18 @@ def main():
 
         optimizer = torch.optim.AdamW([
             {'params': model.classifier.parameters(),   'lr': args.lr_head},
-        ], weight_decay=0.01)
+        ], weight_decay=args.weight_decay)
+    elif model_type == ModelType.Gate:
+        model_type = ModelType(args.model_type)
+        model = LateFusionModel(num_classes=num_classes, dropout_rate=args.dropout_rate, model_name=args.model_name, freeze_backbone=True, model_type=model_type).to(device)
+        if not args.test_only:
+            train_ds = Transform(Subset(dataset, train_idx), transform=data_transforms['train'])
+            val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
+        test_ds = Transform(Subset(dataset, test_idx), transform=data_transforms['test'])
+
+        optimizer = torch.optim.AdamW([
+            {'params': model.classifier.parameters(),   'lr': args.lr_head},
+        ], weight_decay=args.weight_decay)
 
     criterion = CrossEntropyLoss(label_smoothing=0.1)
 
@@ -202,7 +223,7 @@ def main():
                         {'params': model.classifier.parameters(),   'lr': args.lr_head},
                     ], weight_decay=0.01)
 
-            if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
+            if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late or model_type == ModelType.Gated:
                 train_loss, train_acc, train_f1, train_recall, train_precision = train_epoch(model, train_loader, optimizer, criterion, device)
                 val_loss, val_acc, val_f1, val_recall, val_precision = evaluate(model, val_loader, criterion, device)
             elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
@@ -241,7 +262,7 @@ def main():
         return
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
+    if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late or model_type == ModelType.Gated:
         _, test_acc, test_f1, test_recall, test_precision = evaluate(model, test_loader, criterion, device)
     else:
         _, test_acc, test_f1, test_recall, test_precision = evaluate_single_modality(model, test_loader, criterion, device)
