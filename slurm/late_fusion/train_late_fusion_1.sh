@@ -21,7 +21,7 @@ module load CUDA/12.3.2
 
 # Syncing the uv environment
 echo "Starting to sync uv"
-uv sync
+# uv sync
 
 # Creates log directory
 mkdir -p logs

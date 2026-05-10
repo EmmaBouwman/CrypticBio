@@ -28,6 +28,8 @@ from src.data_gather import DuckDBManager
 print("torch:", torch.__version__)
 print("cuda available:", torch.cuda.is_available())
 print("device count:", torch.cuda.device_count())
+x = torch.rand(3, 3).cuda()
+print(x)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Animal Sat Transformer Classifier")
@@ -103,7 +105,7 @@ def main():
 
     if model_type == ModelType.Animal or model_type == ModelType.Satelite or model_type == ModelType.Both:
         data_transforms = get_transforms(args.transform_size, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-    elif model_type == ModelType.Early or model_type == ModelType.Late:
+    elif model_type in [ModelType.Early, ModelType.Late, ModelType.Gated]:
         data_transforms = get_transforms(args.transform_size, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
     if model_type == ModelType.Both:
@@ -221,7 +223,7 @@ def main():
                         {'params': model.classifier.parameters(),   'lr': args.lr_head},
                     ], weight_decay=0.01)
 
-            if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
+            if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late or model_type == ModelType.Gated:
                 train_loss, train_acc, train_f1, train_recall, train_precision = train_epoch(model, train_loader, optimizer, criterion, device)
                 val_loss, val_acc, val_f1, val_recall, val_precision = evaluate(model, val_loader, criterion, device)
             elif model_type == ModelType.Animal or model_type == ModelType.Satelite:
@@ -260,7 +262,7 @@ def main():
         return
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late:
+    if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late or model_type == ModelType.Gated:
         _, test_acc, test_f1, test_recall, test_precision = evaluate(model, test_loader, criterion, device)
     else:
         _, test_acc, test_f1, test_recall, test_precision = evaluate_single_modality(model, test_loader, criterion, device)

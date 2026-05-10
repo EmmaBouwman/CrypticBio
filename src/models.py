@@ -146,8 +146,10 @@ class LateFusionModel(nn.Module):
         self.cb_encoder.fc = nn.Identity()
         self.sh_encoder.fc = nn.Identity()
 
-        embed_dim = 512
         fusion_dim = embed_dim * 2        
+
+        if self.model_type == ModelType.Gated:
+            self.gate_layer = nn.Linear(fusion_dim, embed_dim)
 
         self.backbone = nn.ModuleList([self.cb_encoder, self.sh_encoder])
 

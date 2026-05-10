@@ -29,10 +29,10 @@ mkdir -p logs
 # Run the python script
 echo "Starting to train late fusion model"
 uv run scripts/train_test.py \
-    --batch_size 64 \
+    --batch_size 8 \
     --num_workers 8 \
     --epochs 100 \
-    --model_name "resnet18" \
+    --model_name "resnet50" \
     --save_name "best_late_fusion_resized.pth" \
     --lr_head 1e-4 \
     --lr_backbone 1e-5 \
