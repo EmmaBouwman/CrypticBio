@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import cv2
 import argparse
+import warnings
 from pathlib import Path
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
@@ -10,26 +11,47 @@ from src.dataset import AnimalSateliteDataset, get_transforms
 from src.models import AnimalSatClassifier, ModelType, SingleModalityClassifier
 from src.data_gather import DuckDBManager
 
+# Global variable to store attention weights captured by the forward hook
 extracted_attn_weights = None
 
 def get_attention_hook(module, input, output):
+    """
+    PyTorch forward hook to capture internal attention weights during inference.
+    
+    Args:
+        module: The layer being hooked.
+        input: The input tensor to the layer.
+        output: The output tensor from the layer.
+    """
     global extracted_attn_weights
+    # Capturing the attention dropout input
     extracted_attn_weights = input[0].detach()
 
 def process_and_save_attention(attn_map, raw_img, output_path):
+    """
+    Processes raw attention weights into a visually interpretable heatmap overlay.
+
+    Args:
+        attn_map (np.ndarray): The 2D attention map (e.g., 14x14).
+        raw_img (np.ndarray): The original image as a float array [0, 1].
+        output_path (str): File path to save the resulting visualization.
+    """
+    # Resize map from patch-grid (14x14) to full image size (224x224)
     attn_map_resized = cv2.resize(attn_map, (224, 224))
     
+    # Use 98th percentile to prevent outliers from washing out the map
     v_max = np.percentile(attn_map_resized, 98)  
     attn_map_resized = np.clip(attn_map_resized, None, v_max)
     
+    # Normalize
     attn_map_min, attn_map_max = attn_map_resized.min(), attn_map_resized.max()
     attn_map_resized = (attn_map_resized - attn_map_min) / (attn_map_max - attn_map_min + 1e-8)
     
-    # Create Heatmap
+    # Generate Heatmap
     heatmap = cv2.applyColorMap(np.uint8(255 * attn_map_resized), cv2.COLORMAP_JET)
-    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB) / 255.0
+    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB) / 255.0 # Match RGB float format
     
-    # Blend with original image
+    # Combine 60% heatmap, 40% original image
     visualization = 0.6 * heatmap + 0.4 * raw_img
     visualization = (visualization / visualization.max()) * 255.0
     
@@ -49,7 +71,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_type = ModelType(args.model_type)
 
-    # Load checkpoint and model
+    # Initialize model architecture based on checkpoint metadata
     checkpoint = torch.load(args.model_path, map_location=device)
     species_map = checkpoint['species_map']
     num_classes = len(species_map)
@@ -65,13 +87,14 @@ def main():
     model.to(device)
     model.eval()
 
-    # Database and Data loading
+    # Load file IDs and filter data via DuckDB
     base_path = Path(os.getenv("DATA_FOLDER"))
     db_path = base_path / os.getenv("DATABASE")
     cb_folder = base_path / os.getenv("CB_IMAGE_PATH")
     all_ids = [int(os.path.splitext(f)[0]) for f in os.listdir(cb_folder) if f.endswith('.png')]
 
     with DuckDBManager(db_path) as db:
+        # SQL filters for species with at least 50 samples to ensure statistical relevance
         filtered_data = db.con.execute("""
             WITH valid_species AS (
                 SELECT scientificName
@@ -93,6 +116,7 @@ def main():
     dataset = AnimalSateliteDataset(valid_ids, name_to_id, db_path, transform_size=224, model_type=model_type)
     labels = dataset.data['scientificName'].values
 
+    # Stratified split to maintain class balance in visualizations
     train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels, random_state=42)
     val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=labels[temp_idx], random_state=42)
 
@@ -104,8 +128,10 @@ def main():
         animal_tensor = transforms_dict['test'](animal_raw).unsqueeze(0).to(device)
         sat_tensor = transforms_dict['test'](sat_raw).unsqueeze(0).to(device)
         
-        # Pulling from block -3 to avoid attention sink artifacts
+        # Target block -3: Deep enough for semantics, avoids 'attention sink' bias in final layers
         attn_module = model.animal_backbone.blocks[-3].attn
+        
+        # Disable fused_attn to ensure the hook can access the intermediate dropout input
         if hasattr(attn_module, 'fused_attn'):
             attn_module.fused_attn = False
             
@@ -119,7 +145,7 @@ def main():
 
         # Parse Self-Attention
         animal_head_attn = extracted_attn_weights[0, :, 0, 1:]  
-        avg_animal_attn = animal_head_attn.mean(dim=0)               
+        avg_animal_attn = animal_head_attn.mean(dim=0) # Average over all attention heads               
         animal_attn_map = avg_animal_attn.reshape(14, 14).cpu().numpy()
         
         animal_out_path = os.path.join(args.output_dir, f"attention_animal_{first_test_idx}.jpg")
@@ -127,7 +153,7 @@ def main():
 
         # Parse Cross-Attention
         avg_sat_attn = cross_attn_weights[0].mean(dim=0)             
-        sat_spatial_attn = avg_sat_attn[1:]                          
+        sat_spatial_attn = avg_sat_attn[1:]                                          
         sat_attn_map = sat_spatial_attn.reshape(14, 14).cpu().numpy()
         
         sat_out_path = os.path.join(args.output_dir, f"attention_sat_{first_test_idx}.jpg")
@@ -139,7 +165,7 @@ def main():
         image_raw, label_id = dataset[first_test_idx]
         image_tensor = transforms_dict['test'](image_raw).unsqueeze(0).to(device)
         
-        # Target the generic backbone block -3
+        # Target the generic backbone block -3 for single-modality ViT
         attn_module = model.backbone.blocks[-3].attn
         if hasattr(attn_module, 'fused_attn'):
             attn_module.fused_attn = False
@@ -147,11 +173,11 @@ def main():
         hook_handle = attn_module.attn_drop.register_forward_hook(get_attention_hook)
 
         with torch.no_grad():
-            logits = model(image_tensor) # Cleaned up: only passes 1 tensor, no extra kwargs
+            logits = model(image_tensor)
 
         raw_img = np.array(image_raw.resize((224, 224))) / 255.0
 
-        # Parse Self-Attention
+        # Self-Attention for single image 
         image_head_attn = extracted_attn_weights[0, :, 0, 1:]          
         avg_image_attn = image_head_attn.mean(dim=0)               
         image_attn_map = avg_image_attn.reshape(14, 14).cpu().numpy()
