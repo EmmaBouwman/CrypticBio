@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ef_resnet18
+#SBATCH --job-name=ef_resnet18_final
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user=s2832674@vuw.leidenuniv.nl
 #SBATCH --mail-type=END
@@ -20,11 +20,12 @@ mkdir -p logs
 
 source .venv/bin/activate
 
+
 echo "Job: $SLURM_JOB_ID | Model: resnet18 | Dropout: 0.3 | Weight decay: 0.01"
 
 python scripts/train_test.py \
     --model_type 4 \
-    --epochs 100 \
+    --epochs 200 \
     --batch_size 64 \
     --dropout 0.3 \
     --weight_decay 0.01 \

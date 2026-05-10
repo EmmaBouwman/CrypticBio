@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ef_dropout_wd
+#SBATCH --job-name=ef_dropout_wd_final
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user=s2832674@vuw.leidenuniv.nl
 #SBATCH --mail-type=END
@@ -24,7 +24,7 @@ echo "Job: $SLURM_JOB_ID | Model: resnet50 | Dropout: 0.5 | Weight decay: 0.1"
 
 python scripts/train_test.py \
     --model_type 4 \
-    --epochs 100 \
+    --epochs 200 \
     --batch_size 64 \
     --dropout 0.5 \
     --weight_decay 0.1 \

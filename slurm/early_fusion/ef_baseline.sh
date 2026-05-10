@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ef_baseline
+#SBATCH --job-name=ef_baseline_final
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user=s2832674@vuw.leidenuniv.nl
 #SBATCH --mail-type=END
@@ -24,13 +24,13 @@ echo "Job: $SLURM_JOB_ID | Model: resnet50 | Dropout: 0.3 | Weight decay: 0.01"
 
 python scripts/train_test.py \
     --model_type 4 \
-    --epochs 100 \
+    --epochs 200 \
     --batch_size 64 \
     --dropout 0.3 \
     --weight_decay 0.01 \
     --model_name "resnet50" \
     --save_name "ef_baseline.pth" \
     --lr_head 1e-4 \
-    --lr_backbone 1e-5 \
+    --lr_backbone 1e-5\
     --transform_size 224 \
     --num_workers 8
