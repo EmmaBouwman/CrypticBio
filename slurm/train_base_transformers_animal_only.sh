@@ -13,7 +13,7 @@
 
 mkdir -p logs
 
-module purges
+module purge
 
 module load ALICE/default
 module load slurm
@@ -34,7 +34,7 @@ echo "Starting job for vit_base_patch16_224"
 
 # Run the script with your requested parameters
 uv run scripts/train_test.py \
-    --batch_size 64 \
+    --batch_size 16 \
     --num_workers 8 \
     --epochs 100 \
     --model_name "vit_base_patch16_224" \
