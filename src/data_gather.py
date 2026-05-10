@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 import warnings
 from datetime import datetime, timedelta
@@ -8,10 +9,10 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import requests
-import os
 from geopy.distance import distance
 from huggingface_hub import snapshot_download
 from PIL import Image
+from requests.exceptions import HTTPError
 from sentinelhub import (
     CRS,
     BBox,
@@ -22,19 +23,19 @@ from sentinelhub import (
     bbox_to_dimensions,
 )
 from sentinelhub.exceptions import DownloadFailedException
-from requests.exceptions import HTTPError
 
 
 class DuckDBManager:
     """
-    A database manager for handling DuckDB database connections and table initialization.
+    A database manager for handling DuckDB database connections and table initialization
 
     Mostly be used with "with DuckDBManager(<path>, readOnly=True) as db:"
 
     Attributes:
         db_path (Path): File system path to the DuckDB database file.
         table_name (str): The name of the table to interact with or create.
-        con (duckdb.DuckDBPyConnection): The active connection object, initialized in __enter__.
+        con (duckdb.DuckDBPyConnection): The active connection object, initialized 
+                                         in __enter__.
         readOnly (bool): If True, opens the database in read-only mode.
     """
 
