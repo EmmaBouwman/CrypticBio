@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_tiny_model
+#SBATCH --job-name=train_tiny_model_sat
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
@@ -29,7 +29,7 @@ uv sync
 echo "Starting job for vit_tiny_patch16_224"
 
 # Run the script with your requested parameters
-uv run scripts/train_transformer.py \
+uv run scripts/train_test.py \
     --batch_size 64 \
     --num_workers 8 \
     --epochs 100 \
