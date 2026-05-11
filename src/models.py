@@ -102,21 +102,8 @@ class EarlyFusionModel(nn.Module):
     def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False, dropout=0.3):
         super().__init__()
 
-        
-        self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0, in_chans=3)
+        self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0, in_chans=6)
 
-        if hasattr(self.backbone, 'conv1'):
-            old_conv = self.backbone.conv1
-            new_conv = nn.Conv2d(6, old_conv.out_channels,
-                                 kernel_size=old_conv.kernel_size,
-                                 stride=old_conv.stride,
-                                 padding=old_conv.padding,
-                                 bias=False)
-            with torch.no_grad():
-                new_conv.weight[:, :3] = old_conv.weight
-                new_conv.weight[:, 3:] = old_conv.weight
-            self.backbone.conv1 = new_conv
-        
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
