@@ -13,7 +13,7 @@
 
 mkdir -p logs
 
-module purges
+module purge
 
 module load ALICE/default
 module load slurm
@@ -30,10 +30,10 @@ echo "Starting to sync uv"
 uv sync
 echo "Synced uv"
 
-echo "Starting job for vit_tiny_patch16_224"
+echo "Starting job for vit_base_patch16_224"
 
 # Run the script with your requested parameters
-uv run scripts/train_transformer.py \
+uv run scripts/train_test.py \
     --batch_size 16 \
     --num_workers 8 \
     --epochs 100 \
