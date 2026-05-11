@@ -151,7 +151,7 @@ def main():
         optimizer = torch.optim.AdamW([
             {'params': model.classifier.parameters(),   'lr': args.lr_head},
         ], weight_decay=args.weight_decay)
-    elif model_type == ModelType.Gate:
+    elif model_type == ModelType.Gated:
         model_type = ModelType(args.model_type)
         model = LateFusionModel(num_classes=num_classes, dropout_rate=args.dropout_rate, model_name=args.model_name, freeze_backbone=True, model_type=model_type).to(device)
         if not args.test_only:
