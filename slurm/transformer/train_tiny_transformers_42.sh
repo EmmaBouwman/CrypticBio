@@ -23,7 +23,7 @@ source .venv/bin/activate
 echo "Job: $SLURM_JOB_ID | Model: vit_tiny | Random seed: 42"
 
 # Run the script with your requested parameters
-uv run scripts/train_test.py \
+python scripts/train_test.py \
     --batch_size 64 \
     --num_workers 8 \
     --epochs 200 \
