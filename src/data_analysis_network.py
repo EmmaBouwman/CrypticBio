@@ -285,6 +285,9 @@ def main():
     cluster_df, nodes_df = get_cluster_data(
         nr_clusters, nodes_color_map, occurrences_dict
     )
+    filtered_total = cluster_df["total_occurrences"].sum()
+
+    print(f"Total observations in filtered clusters: {filtered_total}")
 
     output_dir = Path("results/data_analysis")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -313,4 +316,10 @@ def main():
 
 
 if __name__ == "__main__":
+    with DuckDBManager(db_path) as db:
+        total_rows = db.con.execute("""
+            SELECT COUNT(*) FROM crypticbio
+        """).fetchone()[0]
+
+        print(f"Total observations: {total_rows}")
     main()
