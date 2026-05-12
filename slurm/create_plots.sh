@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=plot_from_out
 #SBATCH --output=logs/plot_job_%x_%j.out
-#SBATCH --mail-user="s.......@vuw.leidenuniv.nl"
+#SBATCH --mail-user="s2832674@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
 #SBATCH --mem=4G
 #SBATCH --time=0:05:00
@@ -14,7 +14,7 @@ set -e
 
 module purge
 module load ALICE/default
-module load uv
+
 
 echo "Starting plotting job (Job ID: $SLURM_JOB_ID, host: $(hostname))"
 uv sync
