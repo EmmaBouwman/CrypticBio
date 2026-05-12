@@ -1,0 +1,2 @@
+Job: 2278073 | Model: fusion18 | Random seed: 42
+/var/spool/slurmd/job2278073/slurm_script: line 24: uv: command not found
