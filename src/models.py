@@ -95,9 +95,9 @@ class SingleModalityClassifier(nn.Module):
             nn.LayerNorm(embed_dim),                 # Standard for Transformers
             nn.Linear(embed_dim, embed_dim // 2),    # 192 -> 96 Bottleneck
             nn.GELU(),                               # Transformer-style activation
-            nn.Dropout(0.2),                         # Initial regularization
+            nn.Dropout(0.25),                         # Initial regularization
             nn.LayerNorm(embed_dim // 2),            # Stability for the hidden layer
-            nn.Dropout(0.3),                         # Heavier dropout before output
+            nn.Dropout(0.5),                         # Heavier dropout before output
             nn.Linear(embed_dim // 2, num_classes)   # Final prediction
         )
 
