@@ -3,7 +3,7 @@
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --time=7-00:00:00
 #SBATCH --partition=gpu-2080ti-11g 
 #SBATCH --gres=gpu:2080_ti:1
