@@ -30,7 +30,7 @@ echo "Starting job for vit_tiny_patch16_224"
 
 # Run the script with your requested parameters
 uv run scripts/gradcam.py \
-  --model_path best_animal_base_resized.pth \
+  --model_path ./models/base_transformer_model_animal.pth \
   --model_type 1 \
   --model_name vit_base_patch16_224 \
-  --output_dir results_analysis
+  --output_dir gradcam

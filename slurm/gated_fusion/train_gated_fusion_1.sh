@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gated_fusion_model
+#SBATCH --job-name=gated_fusion_model_1
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2800020@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
