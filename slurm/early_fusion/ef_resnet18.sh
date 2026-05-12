@@ -27,7 +27,7 @@ python scripts/train_test.py \
     --model_type 4 \
     --epochs 200 \
     --batch_size 64 \
-    --dropout 0.3 \
+    --dropout_rate 0.3 \
     --weight_decay 0.01 \
     --model_name "resnet18" \
     --save_name "ef_resnet18.pth" \
