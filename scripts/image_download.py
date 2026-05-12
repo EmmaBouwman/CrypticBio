@@ -14,6 +14,7 @@ from src.data_gather import (
     check_exists_dir,
 )
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Fetch crypticbio rows based on cluster CSV."
@@ -43,14 +44,15 @@ def main():
         ).df()
 
     sh = SentinelHubManager(config)
-    
+
+    # make sure error ids are catched
     bad_ids = set()
     if os.path.exists("bad_rows.txt"):
-        with open("bad_rows.txt", "r") as f:
+        with open("bad_rows.txt") as f:
             bad_ids = {line.split()[0] for line in f if line.strip()}
-    
+
     for idx, row in df.iterrows():
-        if str(row['id']) in bad_ids:
+        if str(row["id"]) in bad_ids:
             continue
         if os.path.exists(row["crypticbio_image"]):
             continue
@@ -58,33 +60,37 @@ def main():
         print(f"--- {row['scientificName']} ---")
         try:
             target_date = f"{int(row['year'])}-{int(row['month'])}-{int(row['day'])}"
+
             flag, image_path = sh.get_and_save_image(
                 row["decimalLatitude"],
                 row["decimalLongitude"],
                 target_date,
                 row["sentinel_image"],
-                db_path
+                db_path,
             )
+            # Add to bad_rows if image not saved from SH
             if flag is False:
                 with open("bad_rows.txt", "a") as f:
                     f.write(f"{row['id']}\n")
-                bad_ids.add(str(row['id']))
+                bad_ids.add(str(row["id"]))
                 continue
-            
+
             cb = CrypticImageManager(row)
             flag_2 = cb.get_and_save_image()
+            # Add to bad_rows if image not saved by CB and remove SH image as well
             if flag_2 is False:
                 if image_path and os.path.exists(image_path):
                     os.remove(image_path)
                 with open("bad_rows.txt", "a") as f:
                     f.write(f"{row['id']}\n")
-                bad_ids.add(str(row['id'])) 
+                bad_ids.add(str(row["id"]))
                 continue
         except Exception as e:
             print(f"Error at ID {row['id']}: {e}")
             with open("bad_rows.txt", "a") as f:
                 f.write(f"{row['id']} - Error: {str(e)}\n")
-            bad_ids.add(str(row['id']))
+            bad_ids.add(str(row["id"]))
+
 
 if __name__ == "__main__":
     load_dotenv(".env")
@@ -105,4 +111,5 @@ if __name__ == "__main__":
     config = SHConfig()
     config.sh_client_id = os.getenv("SH_CLIENT_ID")
     config.sh_client_secret = os.getenv("SH_CLIENT_SECRET")
+
     main()
