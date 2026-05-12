@@ -107,7 +107,7 @@ class SingleModalityClassifier(nn.Module):
         return self.classifier(features[:, 0, :])
 
 class EarlyFusionModel(nn.Module):
-    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False, dropout_rate=0.3):
+    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False):
         super().__init__()
 
         self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0, in_chans=6)
@@ -135,7 +135,7 @@ class EarlyFusionModel(nn.Module):
         return self.classifier(features)
 
 class LateFusionModel(nn.Module):
-    def __init__(self, num_classes, dropout_rate, model_name, freeze_backbone=False, model_type=ModelType.Late):
+    def __init__(self, num_classes, model_name, freeze_backbone=False, model_type=ModelType.Late):
         super().__init__()
         print(model_type)
         self.model_type = ModelType(model_type)
