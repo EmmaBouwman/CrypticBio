@@ -26,6 +26,7 @@ dependencies = [
     "scikit-learn>=1.6.1",
     "opencv-python>=4.13.0.92",
     "grad-cam>=1.5.5",
+    "ttach==0.0.3",
 ]
 
 [dependency-groups]
