@@ -33,4 +33,4 @@ python scripts/train_test.py \
     --random_seed 42 
     --model_type 4 \
     --model_name "resnet50" \
-    --save_name "resnet50_42.pth" \
+    --save_name "resnet50_42.pth" 
