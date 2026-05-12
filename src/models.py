@@ -107,18 +107,11 @@ class SingleModalityClassifier(nn.Module):
         return self.classifier(features[:, 0, :])
 
 class EarlyFusionModel(nn.Module):
-    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False):
+    def __init__(self, num_classes, model_name='resnet50', freeze_backbone=False, dropout_rate=0.3):
         super().__init__()
 
-        
-        self.channel_proj = nn.Sequential(
-            nn.Conv2d(6, 3, kernel_size=1, bias=False),
-            nn.BatchNorm2d(3),
-            nn.ReLU(),
-        )
+        self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0, in_chans=6)
 
-        self.backbone = timm.create_model(model_name, pretrained=True, num_classes=0)
-        
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
@@ -137,8 +130,7 @@ class EarlyFusionModel(nn.Module):
         )
 
     def forward(self, cb_img, sh_img):
-        x = torch.cat([cb_img, sh_img], dim=1)   
-        x = self.channel_proj(x)                  
+        x = torch.cat([cb_img, sh_img], dim=1)                     
         features = self.backbone(x)               
         return self.classifier(features)
 
