@@ -22,6 +22,14 @@ db_path = base_folder / os.getenv("DATABASE")
 
 
 def count_occurrences():
+    """
+    Retrieve occurrence counts for each species in the database.
+    Queries the `crypticbio` table and counts the number of records for each
+    unique `scientificName`.
+    Returns:
+        dict[str, int]:
+            A dictionary mapping species names to their total occurrence counts.
+    """
     print("Fetching species occurrence counts...")
     with DuckDBManager(db_path) as db:
         occ_df = db.con.execute("""
@@ -35,6 +43,18 @@ def count_occurrences():
 
 
 def fetch_ids_with_species_and_location():
+    """
+    Select observation IDs, species names, and geographic coordinates
+    from all records from the crypticbio table that contain valid
+    latitude and longitude values.
+    Returns:
+        pandas.DataFrame:
+            A DataFrame containing the following columns:
+            - id: Unique observation identifier
+            - scientificName: species name
+            - decimalLatitude: latitude coordinate
+            - decimalLongitude: longitude coordinate
+    """
     with DuckDBManager(db_path) as db:
         df = db.con.execute("""
             SELECT id, scientificName, decimalLatitude, decimalLongitude
@@ -46,6 +66,14 @@ def fetch_ids_with_species_and_location():
 
 
 def build_network():
+    """
+    Build a species connectivity network from cryptic group relationships.
+    Creates an undirected NetworkX graph where nodes represent species and
+    edges represent relationships between species listed in the same
+    crypticGroup.
+    Returns:
+        networkx.Graph: a graph containing species connectivity relationships.
+    """
     query = """
     SELECT DISTINCT
         scientificName AS source_species,
@@ -56,7 +84,7 @@ def build_network():
     with DuckDBManager(db_path) as db:
         df = db.con.execute(query).df()
 
-    # Clean data (no self-loops, no duplicates)
+    # Clean data (no self-loops and duplicates)
     df = df[df["source_species"] != df["target_species"]]
     df = df.drop_duplicates()
 
@@ -65,6 +93,20 @@ def build_network():
 
 
 def filter_network_clusters(G_full, occ_dict):
+    """
+    Filter graph clusters based on total occurrence counts.
+    Iterates through connected components in the graph and selects clusters
+    whose combined occurrence counts fall within the target range.
+    Args:
+        G_full (networkx.Graph): the full species connectivity graph.
+        occ_dict (dict[str, int]): dictionary mapping species names to occurrence counts.
+    Returns: tuple[networkx.Graph, int, dict[str, int]] | None:
+            Returns a tuple containing:
+            - G_filtered: Subgraph containing only matching clusters.
+            - cluster_count: Number of matching clusters.
+            - node_color_map: Mapping of node names to cluster IDs.
+            Returns None if no matching clusters are found.
+    """
     matching_nodes = []
     node_color_map = {}
     cluster_count = 0
@@ -94,6 +136,20 @@ def filter_network_clusters(G_full, occ_dict):
 
 
 def get_cluster_data(cluster_count, color_map, occ_dict):
+    """
+    Create summary statistics and node data for clusters.
+    Computes species counts, total occurrences, and average occurrences
+    for each cluster. Also creates a table with info per species.
+    Args:
+        cluster_count (int): number of identified clusters.
+        color_map (dict[str, int]): mapping of species names to cluster IDs.
+        occ_dict (dict[str, int]): dictionary mapping species names to occurrence counts.
+    Returns: tuple[pandas.DataFrame, pandas.DataFrame]:
+            - cluster_df:
+                Summary statistics for each cluster.
+            - nodes_df:
+                Per-species cluster membership and occurrence data.
+    """
     cluster_summaries = []
     node_records = []
 
@@ -143,6 +199,19 @@ def get_cluster_data(cluster_count, color_map, occ_dict):
 
 
 def map_ids_to_clusters(df, nodes_color_map):
+    """
+    Assign cluster IDs to observation records. Maps each species in the 
+    input dataframe to its corresponding cluster ID using the 
+    node-to-cluster mapping.
+    Args:
+        df (pandas.DataFrame):
+            DataFrame containing a `scientificName` column.
+        nodes_color_map (dict[str, int]):
+            Mapping of species names to cluster IDs.
+    Returns:
+        pandas.DataFrame: filtered DataFrame containing only 
+        rows assigned to a cluster and a cluster_id column.
+    """
     df["cluster_id"] = df["scientificName"].map(nodes_color_map)
     df = df.dropna(subset=["cluster_id"])
     df["cluster_id"] = df["cluster_id"].astype(int)
@@ -150,6 +219,16 @@ def map_ids_to_clusters(df, nodes_color_map):
 
 
 def pivot_ids_by_cluster(id_df):
+    """
+    Reshape observation IDs into a wide cluster-based format. Groups 
+    observation IDs by cluster and stores them in separate columns.
+    Args:
+        id_df (pandas.DataFrame): dataFrame containing cluster_id 
+                                and id columns.
+    Returns:
+        pandas.DataFrame: wide-format DataFrame where each column 
+        represents a cluster and contains the corresponding observation IDs.
+    """
     grouped = id_df.groupby("cluster_id")["id"].apply(list)
     max_len = max(len(lst) for lst in grouped)
 
@@ -166,19 +245,36 @@ def pivot_ids_by_cluster(id_df):
 
 
 def save_cluster_ids(id_wide_df, output_dir):
+    """
+    Save clustered observation IDs to a csv file.
+    Args:
+        id_wide_df (pandas.DataFrame):
+            Wide-format DataFrame of clustered observation IDs.
+        output_dir (pathlib.Path):
+            Directory where the CSV file will be saved.
+    Returns: None
+    """
     path = output_dir / "cluster_ids_wide.csv"
     id_wide_df.to_csv(path, index=False)
     print(f"Saved cluster IDs to: {path}")
 
 
 def draw_boxplot(nodes_df, output_dir):
+    """
+    Creates a boxplot showing the distribution of occurrence counts for
+    species within each cluster.
+    Args:
+        nodes_df (pandas.DataFrame):
+            DataFrame containing cluster IDs and occurrence counts.
+        output_dir (pathlib.Path):
+            Directory where the plot image will be saved.
+    Returns: None
+    """
     grouped = nodes_df.groupby("cluster_id")["occurrences"].apply(list)
 
-    # Prepare data for boxplot
     data_to_plot = grouped.values
     labels = grouped.index
 
-    # Plot
     plt.figure(figsize=(8, 6))
     plt.boxplot(data_to_plot, labels=labels)
 
@@ -190,15 +286,28 @@ def draw_boxplot(nodes_df, output_dir):
 
 
 def save_cluster_data(nodes_df, output_dir, cluster_df, G_filtered):
-    # 1. Cluster summary
+    """
+    Exports cluster summaries, node-level cluster data, and graph edge
+    lists to the specified output directory.
+    Args:
+        nodes_df (pandas.DataFrame):
+            DataFrame containing node-level cluster data.
+        output_dir (pathlib.Path):
+            Directory where output files will be saved.
+        cluster_df (pandas.DataFrame):
+            DataFrame containing cluster summary statistics.
+        G_filtered (networkx.Graph):
+            Filtered graph containing selected clusters.
+    Returns:
+        pandas.DataFrame:
+            The cluster summary DataFrame.
+    """
     cluster_path = output_dir / "cluster_summary.csv"
     cluster_df.to_csv(cluster_path, index=False)
 
-    # 2. Node table
     nodes_path = output_dir / "nodes_with_clusters.csv"
     nodes_df.to_csv(nodes_path, index=False)
 
-    # 3. Edge list (filtered graph only)
     edges_df = nx.to_pandas_edgelist(G_filtered)
     edges_path = output_dir / "edges.csv"
     edges_df.to_csv(edges_path, index=False)
@@ -212,6 +321,20 @@ def save_cluster_data(nodes_df, output_dir, cluster_df, G_filtered):
 
 
 def draw_network(output_dir, G_filtered, node_draw_sizes, node_colors):
+    """
+    Draws the filtered graph with node sizes and colors
+    representing species occurrence counts and to which cluster it belongs.
+    Args:
+        output_dir (pathlib.Path):
+            directory where the network image will be saved.
+        G_filtered (networkx.Graph):
+            filtered graph containing selected clusters.
+        node_draw_sizes (list[float]):
+            sizes used for rendering graph nodes.
+        node_colors (list):
+            colors assigned to graph nodes.
+    Returns: None
+    """
     plt.figure(figsize=(12, 12))
 
     pos = nx.spring_layout(
@@ -245,6 +368,18 @@ def draw_network(output_dir, G_filtered, node_draw_sizes, node_colors):
 
 
 def draw_world_map(df, output_dir, nr_clusters):
+    """
+    Plot the geographic distribution of clusters by making a scatter plot 
+    of latitude and longitude coordinates, colored by cluster.
+    Args:
+        df (pandas.DataFrame):
+            DataFrame containing geographic coordinates and cluster IDs.
+        output_dir (pathlib.Path):
+            Directory where the map image will be saved
+        nr_clusters (int):
+            total number of clusters
+    Returns: None
+    """
     plt.figure(figsize=(14, 7))
 
     # Use a categorical colormap
@@ -275,6 +410,26 @@ def draw_world_map(df, output_dir, nr_clusters):
 
 
 def main():
+    """
+    Execute the cluster analysis workflow.
+    1. Counts species occurrences
+    2. Builds the species connectivity network
+    3. Filters clusters by total occurrence count
+    4. Generates cluster summary statistics
+    5. Saves cluster IDs and analysis outputs
+    6. Creates visualizations:
+       - Boxplots
+       - Network graphs
+       - Geographic distribution maps
+    Returns: None
+    """
+    with DuckDBManager(db_path) as db:
+        total_rows = db.con.execute("""
+            SELECT COUNT(*) FROM crypticbio
+        """).fetchone()[0]
+
+        print(f"Total observations: {total_rows}")
+
     occurrences_dict = count_occurrences()  # Get species row counts
     G_full = build_network()  # Build the full connectivity graph
 
@@ -316,10 +471,4 @@ def main():
 
 
 if __name__ == "__main__":
-    with DuckDBManager(db_path) as db:
-        total_rows = db.con.execute("""
-            SELECT COUNT(*) FROM crypticbio
-        """).fetchone()[0]
-
-        print(f"Total observations: {total_rows}")
     main()
