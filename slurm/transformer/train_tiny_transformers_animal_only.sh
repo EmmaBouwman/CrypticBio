@@ -32,10 +32,12 @@ echo "Starting job for vit_tiny_patch16_224"
 uv run scripts/train_test.py \
     --batch_size 64 \
     --num_workers 8 \
-    --epochs 100 \
+    --epochs 200 \
+    --lr_head 1e-4 \
+    --lr_backbone 1e-5 \
+    --weight_decay 0.01 \
+    --transform_size 224 \
+    --random_seed 42 \
     --model_name "vit_tiny_patch16_224" \
     --save_name "best_animal_tiny_resized.pth" \
-    --lr_head 2e-4 \
-    --lr_backbone 2e-6 \
-    --transform_size 224 \
     --model_type 1

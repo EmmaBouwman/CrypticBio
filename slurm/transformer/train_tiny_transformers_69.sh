@@ -4,7 +4,7 @@
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
 #SBATCH --mem=64G
-#SBATCH --time=3-00:00:00
+#SBATCH --time=7-00:00:00
 #SBATCH --partition=gpu-2080ti-11g 
 #SBATCH --gres=gpu:2080_ti:1
 #SBATCH --ntasks=1
@@ -32,9 +32,13 @@ echo "Starting job for vit_tiny_patch16_224"
 uv run scripts/train_test.py \
     --batch_size 64 \
     --num_workers 8 \
-    --epochs 100 \
+    --epochs 200 \
+    --lr_head 1e-4 \
+    --lr_backbone 1e-5 \
+    --weight_decay 0.01 \
+    --transform_size 224 \
+    --random_seed 69 \
     --model_name "vit_tiny_patch16_224" \
-    --save_name "best_animal_sat_tiny_resized.pth" \
-    --lr_head 2e-4 \
-    --lr_backbone 2e-6 \
-    --transform_size 224
+    --save_name "best_animal_sat_tiny_resized_69.pth" \
+    --model_type 3
+    

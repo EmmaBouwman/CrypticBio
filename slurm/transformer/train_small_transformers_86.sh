@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=train_base_model_sat
+#SBATCH --job-name=train_tiny_model
 #SBATCH --output=logs/job_%x_%j.out
 #SBATCH --mail-user="s2548526@vuw.leidenuniv.nl"
 #SBATCH --mail-type="END"
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --time=7-00:00:00
 #SBATCH --partition=gpu-2080ti-11g 
 #SBATCH --gres=gpu:2080_ti:1
@@ -20,26 +20,25 @@ module load slurm
 module load CUDA/12.3.2
 module load uv
 
-echo "## Available CUDA devices: $CUDA_VISIBLE_DEVICES"
-
-echo "## Checking status of CUDA device with nvidia-smi"
 nvidia-smi
 
 # Syncing the uv environment
 echo "Starting to sync uv"
 uv sync
-echo "Synced uv"
 
-echo "Starting job for vit_base_patch16_224"
+echo "Starting job for vit_tiny_patch16_224"
 
 # Run the script with your requested parameters
 uv run scripts/train_test.py \
-    --batch_size 16 \
+    --batch_size 64 \
     --num_workers 8 \
-    --epochs 100 \
-    --model_name "vit_base_patch16_224" \
-    --save_name "best_sat_base_resized.pth" \
-    --lr_head 2e-4 \
-    --lr_backbone 2e-6 \
+    --epochs 200 \
+    --lr_head 1e-4 \
+    --lr_backbone 1e-5 \
+    --weight_decay 0.01 \
     --transform_size 224 \
-    --model_type 2
+    --random_seed 86 \
+    --model_name "vit_small_patch16_224" \
+    --save_name "best_animal_sat_small_resized_86.pth" \
+    --model_type 3
+    

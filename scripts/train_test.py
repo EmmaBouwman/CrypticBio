@@ -46,6 +46,7 @@ def parse_args():
     
     # Model Setup
     parser.add_argument("--model_name", type=str, default="vit_base_patch16_224", help="Timm model string")
+    parser.add_argument("--random_seed", type=int, default=42, help="Random seed used")
     parser.add_argument("--save_name", type=str, default="best_animal_sat_model.pth", help="Filename for best checkpoint")
     parser.add_argument("--transform_size", type=int, default=-1, 
                         help="A number similar to the folder you created to resize an image with")
@@ -98,8 +99,8 @@ def main():
     dataset = AnimalSateliteDataset(valid_ids, name_to_id, db_path, args.transform_size, model_type)
     labels = dataset.data['scientificName'].values
     
-    train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels, random_state=42)
-    val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=labels[temp_idx], random_state=42)
+    train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels, random_state=args.random_seed)
+    val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=labels[temp_idx], random_state=args.random_seed)
 
     if model_type == ModelType.Animal or model_type == ModelType.Satelite or model_type == ModelType.Both:
         data_transforms = get_transforms(args.transform_size, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
