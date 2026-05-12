@@ -38,12 +38,15 @@ class AnimalSatClassifier(nn.Module):
         # 2. Cross-Attention: animal patches query the Satellite features
         self.cross_attn = nn.MultiheadAttention(embed_dim, num_heads=8, batch_first=True)
 
-        # Add a LayerNorm for the combined features (1536 dim)
-        self.norm = nn.LayerNorm(embed_dim * 2)
-
-        # 4. Final Classification Head
-        # Concatenates: [animal tokens] + [Satelite with animal tokens]
-        self.classifier = nn.Linear(embed_dim * 2, num_classes)
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(embed_dim*2),                  # Stability for fused features
+            nn.Linear(embed_dim*2, embed_dim),          # Bottleneck: 384 -> 192
+            nn.GELU(),                                  # Transformer-standard activation
+            nn.Dropout(0.25),                           # Light regularization
+            nn.LayerNorm(embed_dim),                    # Norm the hidden layer
+            nn.Dropout(0.5),                            # Heavier regularization before output
+            nn.Linear(embed_dim, num_classes) # Final prediction
+        )
 
     def forward(self, animal_img, sat_img, attn_bool: bool = False):
         # Feature Extraction
@@ -68,13 +71,13 @@ class AnimalSatClassifier(nn.Module):
         combined = torch.cat([animal_full, sat_adjusted], dim=-1) # [Batch, 1536]
 
         # Apply Layernorm before classification
-        combined = self.norm(combined)
+        logits = self.classifier(combined)
 
         if attn_bool:
-            return self.classifier(combined), attn_weights
+            return logits, attn_weights
         
         # Final Scientific label Prediction
-        return self.classifier(combined)
+        return logits
 
 class SingleModalityClassifier(nn.Module):
     def __init__(self, num_classes, model_name='vit_tiny_patch16_224', freeze_backbone=True):
@@ -89,8 +92,13 @@ class SingleModalityClassifier(nn.Module):
         embed_dim = self.backbone.num_features
 
         self.classifier = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, num_classes)
+            nn.LayerNorm(embed_dim),                 # Standard for Transformers
+            nn.Linear(embed_dim, embed_dim // 2),    # 192 -> 96 Bottleneck
+            nn.GELU(),                               # Transformer-style activation
+            nn.Dropout(0.25),                         # Initial regularization
+            nn.LayerNorm(embed_dim // 2),            # Stability for the hidden layer
+            nn.Dropout(0.5),                         # Heavier dropout before output
+            nn.Linear(embed_dim // 2, num_classes)   # Final prediction
         )
 
     def forward(self, img):
@@ -117,12 +125,15 @@ class EarlyFusionModel(nn.Module):
 
         embed_dim = self.backbone.num_features 
 
-        self.classifier = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, embed_dim // 2),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(embed_dim // 2, num_classes),
+        self.classifier = nn.Sequential(           
+            nn.Flatten(),                          # Result: (Batch, 4096)
+            nn.BatchNorm1d(embed_dim * 2),         # Stability before Linear
+            nn.Dropout(0.25),                      # Light Dropout
+            nn.Linear(embed_dim*2, embed_dim), # 4096 -> 2048 (The Bottleneck)
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(embed_dim),      # Stability after Activation
+            nn.Dropout(0.5),                       # Heavier Dropout before output
+            nn.Linear(embed_dim, num_classes),
         )
 
     def forward(self, cb_img, sh_img):
@@ -171,12 +182,15 @@ class LateFusionModel(nn.Module):
         else:
             raise ValueError(f"Unsupported model_type: {model_type}") 
 
-        self.classifier = nn.Sequential(
-            nn.LayerNorm(in_dim),
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_dim, num_classes)
+        self.classifier = nn.Sequential(           # Result: (Batch, 4096, 1, 1)
+            nn.Flatten(),                          # Result: (Batch, 4096)
+            nn.BatchNorm1d(in_dim),         # Stability before Linear
+            nn.Dropout(0.25),                      # Light Dropout
+            nn.Linear(in_dim, hidden_dim), # 4096 -> 2048 (The Bottleneck)
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(hidden_dim),      # Stability after Activation
+            nn.Dropout(0.5),                       # Heavier Dropout before output
+            nn.Linear(hidden_dim, num_classes),
         )
 
     def forward(self, cb, sh):
