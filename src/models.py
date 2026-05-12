@@ -125,8 +125,7 @@ class EarlyFusionModel(nn.Module):
 
         embed_dim = self.backbone.num_features 
 
-        self.classifier = nn.Sequential(
-            nn.AdaptiveConcatPool2d(1),            # Result: (Batch, 4096, 1, 1)
+        self.classifier = nn.Sequential(           
             nn.Flatten(),                          # Result: (Batch, 4096)
             nn.BatchNorm1d(embed_dim * 2),         # Stability before Linear
             nn.Dropout(0.25),                      # Light Dropout
@@ -183,8 +182,7 @@ class LateFusionModel(nn.Module):
         else:
             raise ValueError(f"Unsupported model_type: {model_type}") 
 
-        self.classifier = nn.Sequential(
-            nn.AdaptiveConcatPool2d(1),            # Result: (Batch, 4096, 1, 1)
+        self.classifier = nn.Sequential(           # Result: (Batch, 4096, 1, 1)
             nn.Flatten(),                          # Result: (Batch, 4096)
             nn.BatchNorm1d(in_dim),         # Stability before Linear
             nn.Dropout(0.25),                      # Light Dropout
