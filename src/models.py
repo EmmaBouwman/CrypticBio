@@ -135,6 +135,16 @@ class EarlyFusionModel(nn.Module):
         return self.classifier(features)
 
 class LateFusionModel(nn.Module):
+    """
+    Multimodal classification model using late fusion or gated fusion.
+    Args:
+        num_classes (int): number of output classes
+        model_name (str): backbone architecture (resnet18 or resnet50)
+        freeze_backbone (bool, optional): freeze backbone weights if True
+        model_type (ModelType, optional): fusion strategy to use
+    Returns:
+        torch.Tensor: output scores for each class
+    """
     def __init__(self, num_classes, model_name, freeze_backbone=False, model_type=ModelType.Late):
         super().__init__()
         print(model_type)
