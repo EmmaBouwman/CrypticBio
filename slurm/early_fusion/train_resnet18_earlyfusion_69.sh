@@ -30,7 +30,7 @@ python scripts/train_test.py \
     --lr_backbone 1e-5 \
     --weight_decay 0.01 \
     --transform_size 224 \
-    --random_seed 69
+    --random_seed 69 \
     --model_type 4 \
     --model_name "resnet18" \
     --save_name "resnet18_69.pth" 
