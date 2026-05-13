@@ -119,15 +119,16 @@ class EarlyFusionModel(nn.Module):
         embed_dim = self.backbone.num_features 
 
         self.classifier = nn.Sequential(           
-            nn.Flatten(),                          # Result: (Batch, 4096)
-            nn.BatchNorm1d(embed_dim * 2),         # Stability before Linear
-            nn.Dropout(0.25),                      # Light Dropout
-            nn.Linear(embed_dim*2, embed_dim), # 4096 -> 2048 (The Bottleneck)
+            nn.Flatten(),                           # Result: (Batch, embed_dim)
+            nn.BatchNorm1d(embed_dim),              # Stability before Linear
+            nn.Dropout(0.25),                       # Light Dropout
+            nn.Linear(embed_dim, embed_dim // 2),   # embed_dim -> embed_dim//2 (The Bottleneck)
             nn.ReLU(inplace=True),
-            nn.BatchNorm1d(embed_dim),      # Stability after Activation
-            nn.Dropout(0.5),                       # Heavier Dropout before output
-            nn.Linear(embed_dim, num_classes),
+            nn.BatchNorm1d(embed_dim // 2),         # Stability after Activation
+            nn.Dropout(0.5),                        # Heavier Dropout before output
+            nn.Linear(embed_dim // 2, num_classes), # embed_dim//2 -> num_classes
         )
+
 
     def forward(self, cb_img, sh_img):
         x = torch.cat([cb_img, sh_img], dim=1)                     
