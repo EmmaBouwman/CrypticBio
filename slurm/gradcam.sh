@@ -11,26 +11,21 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
 
-mkdir -p logs
-
 module purge
-
 module load ALICE/default
 module load slurm
 module load CUDA/12.3.2
-module load uv
 
-nvidia-smi
+mkdir -p logs
 
-# Syncing the uv environment
-echo "Starting to sync uv"
-uv sync
+source .venv/bin/activate
 
-echo "Starting job for vit_tiny_patch16_224"
+echo "Job: $SLURM_JOB_ID | Model: vit_tiny | Random seed: 42"
+
 
 # Run the script with your requested parameters
-uv run scripts/gradcam.py \
-  --model_path ./models/base_transformer_model_animal.pth \
-  --model_type 1 \
-  --model_name vit_base_patch16_224 \
+python scripts/gradcam.py \
+  --model_path ./best_animal_sat_tiny_resized_42.pth \
+  --model_type 3 \
+  --model_name vit_tiny_patch16_224 \
   --output_dir gradcam
