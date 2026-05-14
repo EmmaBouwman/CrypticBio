@@ -89,8 +89,20 @@ class DuckDBManager:
     def extend_db(
         self, crypticbio_img_folder: Path, sentinel_img_folder: Path, show_sample=True
     ):
+        """
+        Extend the database table with an integer row ID and image path columns.
 
-        # adding columns
+        Adds three columns to the existing table (if they do not already exist):
+        - id: integer row identifier derived from DuckDB's built-in rowid.
+        - crypticbio_image: path to the corresponding CrypticBio PNG image.
+        - sentinel_image: path to the corresponding Sentinel PNG image.
+
+        Args
+            crypticbio_img_folder (path): Directory that contains the CrypticBio images (named id.png).
+            sentinel_img_folder (path): Directory that contains the Sentinel images (named id.png).
+            show_sample (bool, optional): If True (default), print the first 5 rows after the update. 
+        """
+        # Add the three new columns
         self.con.execute(
             f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS id INTEGER"
         )
@@ -103,10 +115,10 @@ class DuckDBManager:
             + "ADD COLUMN IF NOT EXISTS sentinel_image VARCHAR"
         )
 
-        # row ID
+        # Populate id from DuckDB's internal rowid 
         self.con.execute(f"UPDATE {self.table_name} SET id = rowid")
 
-        # image paths
+        # Build image paths by concatenating the folder prefix, the row id, and '.png'
         self.con.execute(f"""
         UPDATE {self.table_name}
         SET crypticbio_image = '{crypticbio_img_folder}/' || id || '.png',
@@ -115,7 +127,7 @@ class DuckDBManager:
 
         print(f"Database {self.table_name} extended with id and image columns")
 
-        # check:
+        # check: optionally print a small sample to verify the result
         if show_sample:
             print("First 5 rows after extending:")
             result = self.con.execute(f"""
@@ -127,14 +139,23 @@ class DuckDBManager:
                 print(row)
 
     def delete_db(self):
+        """
+        Drop the managed table from the database.
+
+        Raises
+            RuntimeError: If the table is locked by another process (DuckDB TransactionException),
+                          or if any other unexpected error occurs during the DROP statement.
+        """
         try:
             self.con.execute(f"DROP TABLE IF EXISTS {self.table_name}")
         except duckdb.TransactionException:
+            # Raised when DuckDB cannot acquire a write lock on the table
             raise RuntimeError(
                 f"Could not drop {self.table_name}, "
                 "because it is currently being used by another process."
             )
         except Exception as e:
+            # Catch-all for any other database or system-level errors
             raise RuntimeError(
                 f"An unexpected error occurred while dropping {self.table_name}"
             ) from e
