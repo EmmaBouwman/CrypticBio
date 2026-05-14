@@ -9,7 +9,7 @@ Leiden University · 2025–2026
 
 **AnimalSAT** investigates whether incorporating satellite-derived environmental context can improve classification of cryptic species: species that are morphologically similar but ecologically distinct.
 
-We combine species images from the [CrypticBio dataset](https://huggingface.co/datasets/gmanolache/CrypticBio) with Sentinel-2 satellite imagery retrieved at the observation location and date, and evaluate four multimodal fusion strategies: early, late, gated and transformer fusion. 
+We combine species images from the [CrypticBio dataset](https://huggingface.co/datasets/gmanolache/CrypticBio) (Manolache, Schouten, & Vanschoren, 2025) with Sentinel-2 satellite imagery retrieved at the observation location and date, and evaluate four multimodal fusion strategies: early, late, gated and transformer fusion. 
 
 
 
@@ -53,10 +53,4 @@ With this the model type can be early fusion, gated fusion, late fusion or trans
 
 
 ## Reference
-```bibtex
-@article{manolache2025crypticbio,
-  title={CrypticBio: A Large Multimodal Dataset for Visually Confusing Biodiversity},
-  author={Manolache, G. and Schouten, G. and Vanschoren, J.},
-  journal={arXiv preprint arXiv:2505.14707},
-  year={2025}
-}
+Manolache, G., Schouten, G., & Vanschoren, J. (2025). *CrypticBio: A large multimodal dataset for visually confusing biodiversity*. arXiv. https://arxiv.org/abs/2505.14707
