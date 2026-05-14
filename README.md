@@ -53,6 +53,7 @@ With this the model type can be early fusion, gated fusion, late fusion or trans
 
 
 ## Reference
+```bibtex
 @article{manolache2025crypticbio,
   title={CrypticBio: A Large Multimodal Dataset for Visually Confusing Biodiversity},
   author={Manolache, G. and Schouten, G. and Vanschoren, J.},
