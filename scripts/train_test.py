@@ -25,6 +25,7 @@ from src.models import (
 )
 from src.data_gather import DuckDBManager
 
+# Quick check to confirm PyTorch version and GPU availability at startup
 print("torch:", torch.__version__)
 print("cuda available:", torch.cuda.is_available())
 print("device count:", torch.cuda.device_count())
@@ -32,6 +33,13 @@ x = torch.rand(3, 3).cuda()
 print(x)
 
 def parse_args():
+    """
+    Define and parse command-line arguments for training.
+
+    Returns:
+        argparse.Namespace: Parsed arguments with training hyperparameters,
+        model configuration, and hardware settings.
+    """
     parser = argparse.ArgumentParser(description="Train Animal Sat Transformer Classifier")
     
     # Training Hyperparameters
@@ -59,17 +67,29 @@ def parse_args():
     return parser.parse_args()
 
 def main():
+    """
+    Full training and evaluation pipeline.
+
+    Steps:
+    1. Load environment variables and resolve data paths.
+    2. Filter species with enough samples from the database.
+    3. Build train / val / test splits (stratified by species).
+    4. Instantiate the correct model and optimizer for the chosen fusion strategy.
+    5. Train with early stopping and backbone unfreezing at epoch 5.
+    6. Load the best checkpoint and report test metrics.
+    """
     args = parse_args()
     load_dotenv()
 
-    # Setup Paths
+    # Resolve paths from environment variables
     base_path = Path(os.getenv("DATA_FOLDER"))
     db_path = base_path / os.getenv("DATABASE")
     cb_folder = base_path / os.getenv("CB_IMAGE_PATH")
 
-    # Load IDs from folder
+    # Collect row IDs for which a CrypticBio image actually exists 
     all_ids = [int(os.path.splitext(f)[0]) for f in os.listdir(cb_folder) if f.endswith('.png')]
 
+    # Keep only species that appear at least min_samples times among available images
     with DuckDBManager(db_path) as db:
         filtered_data = db.con.execute("""
             WITH valid_species AS (
@@ -88,6 +108,7 @@ def main():
     species_list = sorted(filtered_data['scientificName'].unique().tolist())
     valid_ids = filtered_data['rowid'].tolist()
 
+    # Build bidirectional label <-> integer mappings
     name_to_id = {name: idx for idx, name in enumerate(species_list)}
     id_to_name = {idx: name for idx, name in enumerate(species_list)}
     num_classes = len(species_list)
@@ -99,9 +120,11 @@ def main():
     dataset = AnimalSateliteDataset(valid_ids, name_to_id, db_path, args.transform_size, model_type)
     labels = dataset.data['scientificName'].values
     
+    # Stratified 80 / 10 / 10 split
     train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, stratify=labels, random_state=args.random_seed)
     val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, stratify=labels[temp_idx], random_state=args.random_seed)
 
+    # ViT-based models use simple [-1, 1] normalisation; CNN-based models use ImageNet stats
     if model_type == ModelType.Animal or model_type == ModelType.Satelite or model_type == ModelType.Both:
         data_transforms = get_transforms(args.transform_size, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     elif model_type in [ModelType.Early, ModelType.Late, ModelType.Gated]:
@@ -114,6 +137,7 @@ def main():
             val_ds = Transform(Subset(dataset, val_idx), transform=data_transforms['val'])
         test_ds = Transform(Subset(dataset, test_idx), transform=data_transforms['test'])
 
+        # Only the cross-attention and classifier head are trainable initially
         optimizer = torch.optim.AdamW([
             {'params': model.cross_attn.parameters(), 'lr': args.lr_head},
             {'params': model.classifier.parameters(), 'lr': args.lr_head},
@@ -161,13 +185,16 @@ def main():
             {'params': model.classifier.parameters(),   'lr': args.lr_head},
         ], weight_decay=args.weight_decay)
 
+    # Label smoothing to help prevent overconfident predictions on noisy species labels
     criterion = CrossEntropyLoss(label_smoothing=0.1)
 
+
+    # -- Training Loop -- 
     if not args.test_only:
         train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
         val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
-        patience = 5
+        patience = 5 # Number of epochs without val-loss improvement before stopping
         epochs_no_improve = 0
         best_val_loss = float('inf')
         early_stop = False
@@ -180,6 +207,8 @@ def main():
 
             print(f"\nEpoch {epoch+1}/{args.epochs}")
 
+            # At epoch 5: unfreeze the backbone(s) and add them to the optimizer
+            # with a much lower learning rate to avoid destroying pretrained weights
             if epoch == 5:
                 if model_type == ModelType.Both:
                     for param in model.animal_backbone.parameters():
@@ -220,6 +249,7 @@ def main():
                         {'params': model.classifier.parameters(),   'lr': args.lr_head},
                     ], weight_decay=0.01)
 
+            # Dispatch to the correct train/eval functions for dual vs single modality
             if model_type == ModelType.Both or model_type == ModelType.Early or model_type == ModelType.Late or model_type == ModelType.Gated:
                 train_loss, train_acc, train_f1, train_recall, train_precision = train_epoch(model, train_loader, optimizer, criterion, device)
                 val_loss, val_acc, val_f1, val_recall, val_precision = evaluate(model, val_loader, criterion, device)
@@ -230,7 +260,7 @@ def main():
             print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}% | F1: {train_f1:.4f} | Recall: {train_recall:.4f} | Precision: {train_precision:.4f}")
             print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc:.2f}% | F1: {val_f1:.4f} | Recall: {val_recall:.4f} | Precision: {val_precision:.4f}")
  
-            # Check for improvement
+            # Track epochs without val-loss improvement for early stopping
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
@@ -238,7 +268,7 @@ def main():
                 epochs_no_improve += 1
                 print(f"No improvement in Val Loss for {epochs_no_improve} epochs.")
 
-            # 2. Save Best Model (based on Accuracy)
+            # Save checkpoint whenever validation accuracy improves
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
                 torch.save({
@@ -247,10 +277,11 @@ def main():
                 }, args.save_name)
                 print(f"New best accuracy! Model saved to {args.save_name}")
 
-            # 3. Trigger Early Stop
+            # Only trigger early stop after the backbone has been unfrozen (epoch >= 5)
             if epochs_no_improve >= patience and epoch >= 5:
                 early_stop = True
-
+    
+    # -- Evaluation on the test set --
     try:
         checkpoint = torch.load(args.save_name, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
