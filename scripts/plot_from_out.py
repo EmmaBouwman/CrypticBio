@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import matplotlib.pyplot as plt
 
+# Global plot style
 plt.rcParams.update({
     "axes.spines.top": False,
     "axes.spines.right": False,
@@ -11,9 +12,23 @@ plt.rcParams.update({
 })
 
 def parse_out_file(path):
+    """
+    Parse a training log file and extract per-epoch metrics.
+
+    Args
+        path : Path to the .out log file.
+
+    Returns
+        epochs (list[int]): Epoch numbers.
+        train_loss (list[float]): Training loss per epoch.
+        val_loss (list[float]): Validation loss per epoch.
+        train_acc (list[float]): Training accuracy (%) per epoch.
+        val_acc (list[float]): Validation accuracy (%) per epoch.
+    """
     epochs, train_loss, val_loss = [], [], []
     train_acc, val_acc = [], []
 
+    # Matches one epoch block, even when newlines appear between fields 
     pattern = re.compile(
         r"Epoch (\d+)/\d+.*?"
         r"Train Loss:\s*([\d.]+) \| Train Acc:\s*([\d.]+)%.*?"
@@ -33,9 +48,11 @@ def parse_out_file(path):
 
     return epochs, train_loss, val_loss, train_acc, val_acc
 
+# Ensure the output directory exists before saving any plots
 output_dir = Path("plots")
 output_dir.mkdir(exist_ok=True)
 
+# Process each log file passed as a command-line argument
 for out_file in sys.argv[1:]:
     epochs, train_loss, val_loss, train_acc, val_acc = parse_out_file(out_file)
 
@@ -45,6 +62,7 @@ for out_file in sys.argv[1:]:
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
+    # -- Loss plot --
     ax1.plot(epochs, train_loss, label="Train")
     ax1.plot(epochs, val_loss, label="Val")
     ax1.axvline(x=5, color="gray", linestyle="--", linewidth=1.0, label="backbone unfrozen")
@@ -53,9 +71,11 @@ for out_file in sys.argv[1:]:
     ax1.set_xlabel("Epoch")        
     ax1.set_ylabel("Loss")        
 
-
+    # -- Accuracy plot --
     ax2.plot(epochs, train_acc, label="Train")
     ax2.plot(epochs, val_acc, label="Val")
+
+    # Highlight the best validation point with a red dot and annotation
     best_val = max(val_acc)
     best_ep  = epochs[val_acc.index(best_val)]
 
@@ -71,6 +91,7 @@ for out_file in sys.argv[1:]:
     ax2.set_xlabel("Epoch")       
     ax2.set_ylabel("Accuracy (%)")
 
+    # Use the filename as the figure title and output filename
     name = Path(out_file).stem
     fig.suptitle(name, fontsize=11, fontweight="bold")
     plt.savefig(output_dir / f"{name}.png")
