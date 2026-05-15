@@ -1,0 +1,15 @@
+Job: 2278124 | Model: fusion18 | Random seed: 42
+usage: train_test.py [-h] [--batch_size BATCH_SIZE] [--epochs EPOCHS]
+                     [--lr_backbone LR_BACKBONE] [--lr_head LR_HEAD]
+                     [--min_samples MIN_SAMPLES] [--model_type MODEL_TYPE]
+                     [--weight_decay WEIGHT_DECAY]
+                     [--dropout_rate DROPOUT_RATE] [--model_name MODEL_NAME]
+                     [--save_name SAVE_NAME] [--transform_size TRANSFORM_SIZE]
+                     [--test_only] [--num_workers NUM_WORKERS]
+train_test.py: error: unrecognized arguments: --random_seed 42
+torch: 2.8.0+cu128
+cuda available: True
+device count: 1
+tensor([[0.0961, 0.0815, 0.3217],
+        [0.4034, 0.8946, 0.2719],
+        [0.4674, 0.0176, 0.7592]], device='cuda:0')
